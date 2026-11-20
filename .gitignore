@@ -1,0 +1,17 @@
+node_modules/
+.netlify/
+public/
+coverage/
+dist/
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.pfx
+*service-account*.json
+*credentials*.json
+*-backup-*.json
+*.log
+*.zip
+.DS_Store

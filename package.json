@@ -1,0 +1,15 @@
+{
+  "name": "vertex-platform",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node serve.mjs",
+    "test": "node tests/smoke.mjs && node tests/sync.mjs && node tests/voice.mjs && node tests/build.mjs && node tests/security.mjs",
+    "preview": "node serve.mjs",
+    "build": "node scripts/prepare-public.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0"
+  }
+}

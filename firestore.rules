@@ -1,0 +1,15 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId}/private/{documentId} {
+      allow read: if request.auth != null && request.auth.uid == userId && documentId == "state";
+      allow create, update: if request.auth != null && request.auth.uid == userId
+        && documentId == "state"
+        && request.resource.data.keys().hasOnly(["payload", "updatedAt"])
+        && request.resource.data.payload is string
+        && request.resource.data.payload.size() < 900000;
+      allow delete: if request.auth != null && request.auth.uid == userId && documentId == "state";
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}
