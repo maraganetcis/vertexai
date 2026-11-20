@@ -4,7 +4,7 @@ import {fileURLToPath} from 'node:url';
 import {dirname,join,extname} from 'node:path';
 const root=dirname(fileURLToPath(import.meta.url));
 const args=process.argv.slice(2);const arg=(name,defaultValue)=>args.includes(name)?args[args.indexOf(name)+1]||defaultValue:defaultValue;
-const host=arg('--host','0.0.0.0'),port=Number(arg('--port','4173'))||4173;
+const host=arg('--host','0.0.0.0'),port=Number(process.env.PORT||arg('--port','3000'))||3000;
 const allow=new Set(['index.html','style.css','app.js','sync.js','sw.js','manifest.webmanifest','icon.svg','firebase-config.js']);
 const mime={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml','.webmanifest':'application/manifest+json'};
 const server=createServer(async(req,res)=>{

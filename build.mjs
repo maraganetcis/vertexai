@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readdir,readFile} from 'node:fs/promises';
 import {execFileSync} from 'node:child_process';
-execFileSync(process.execPath,['scripts/prepare-public.mjs'],{stdio:'pipe'});
+execFileSync(process.execPath,['prepare-public.mjs'],{stdio:'pipe'});
 const assets=(await readdir('public')).sort();
 assert.deepEqual(assets,['app.js','firebase-config.js','icon.svg','index.html','manifest.webmanifest','style.css','sw.js','sync.js']);
 const html=await readFile('public/index.html','utf8');

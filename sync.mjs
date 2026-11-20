@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {mergeDaymateStates,createCloudSync} from '../sync.js';
+import {mergeDaymateStates,createCloudSync} from './sync.js';
 const template=()=>({version:1,demo:false,profile:{name:'나'},tasks:[],events:[],notes:[],lessons:[{day:1,subjects:[]}],studySessions:[],chat:[],settings:{}});
 const local=template(),remote=template();
 local.tasks=[{id:'t1',text:'로컬 변경',done:false},{id:'t2',text:'로컬 과제'}];

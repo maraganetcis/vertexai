@@ -9,7 +9,7 @@ const listeners={};globalThis.document={
 const saved=new Map();globalThis.localStorage={getItem:k=>saved.get(k),setItem:(k,v)=>saved.set(k,v)};
 Object.defineProperty(globalThis,'navigator',{value:{},configurable:true});globalThis.location={protocol:'file:'};globalThis.window={DAYMATE_FIREBASE_CONFIG:null,scrollTo(){}};
 globalThis.confirm=()=>true;
-await import('../app.js');
+await import('./app.js');
 assert.match(dom.view.innerHTML,/Vertex/);
 assert.match(dom.view.innerHTML,/오늘의 수업/);
 const navigation=(page)=>listeners.click({target:{closest(sel){return sel==='[data-page]'?{dataset:{page}}:null}}});

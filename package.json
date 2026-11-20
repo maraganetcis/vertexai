@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "node serve.mjs",
-    "test": "node tests/smoke.mjs && node tests/sync.mjs && node tests/voice.mjs && node tests/build.mjs && node tests/security.mjs",
+    "start": "node serve.mjs",
+    "test": "node smoke.mjs && node sync.mjs && node build.mjs",
+    "lint": "node --check serve.mjs && node --check app.js && node --check sync.js && node --check firebase-config.js && node --check prepare-public.mjs",
     "preview": "node serve.mjs",
-    "build": "node scripts/prepare-public.mjs"
+    "build": "node prepare-public.mjs"
   },
   "dependencies": {
     "firebase-admin": "^13.0.0"
