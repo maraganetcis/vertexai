@@ -212,6 +212,7 @@ let subwayStationQuery='';
 let subwayArrivals=[];
 let subwayActiveStation='';
 let subwayStatusMsg='';
+let transitDiagnosticState={loading:false,checkedAt:'',bus:null,subway:null,error:''};
 let subwayLoading=false;
 const SUBWAY_PRESETS=['강남','신촌','홍대입구','서울','잠실','사당','수원','판교'];
 let nearbyTransitData=null;
@@ -1357,6 +1358,23 @@ async function autoSyncNeisIfNeeded(force=false){
  render();
 }
 
+async function diagnoseTransitApis(){
+ if(typeof fetch!=='function'||!globalThis.location?.protocol?.startsWith('http')){
+  toast('API 연결 점검은 온라인 웹앱에서 실행할 수 있습니다.');return;
+ }
+ if(transitDiagnosticState.loading)return;
+ transitDiagnosticState={...transitDiagnosticState,loading:true,error:''};
+ render();
+ try{
+  const res=await fetch('/api/transit?action=diagnose',{cache:'no-store'});
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok)throw new Error(data.error||'교통 API 진단 요청 실패 (HTTP '+res.status+')');
+  transitDiagnosticState={loading:false,checkedAt:data.checkedAt||'',bus:data.bus||null,subway:data.subway||null,error:''};
+ }catch(e){
+  transitDiagnosticState={...transitDiagnosticState,loading:false,error:e.message||'진단 서버 연결 실패'};
+ }
+ render();
+}
 async function searchBusStations(keyword=''){
  if(typeof fetch!=='function'||!globalThis.location?.protocol?.startsWith('http'))return;
  transitStatusMsg='경기도 버스 정류장을 검색하는 중…';render();
@@ -2041,6 +2059,16 @@ function transport(){
   <span class="kicker">TRANSPORT</span>
   <h1>교통 · 주변 역·정류장 · 동선 타이머</h1>
   <p>내 주변 지하철·버스 실시간 도착, 집→일정 장소 자동 동선 계산, 지각 방지 출발 타이머를 한눈에 확인해요.</p>
+ </div>
+ <div class="sync-info" aria-live="polite" style="margin-bottom:12px">
+  <div class="toolbar" style="justify-content:space-between">
+   <strong>경기도 버스 · 서울시 지하철 API 연결 점검</strong>
+   <button class="small-btn" data-action="diagnoseTransit" ${transitDiagnosticState.loading?'disabled':''}>${transitDiagnosticState.loading?'확인 중…':'연결 상태 검사'}</button>
+  </div>
+  ${transitDiagnosticState.error?`<p class="subtle danger-text">${esc(transitDiagnosticState.error)}</p>`:''}
+  ${transitDiagnosticState.bus?`<p class="subtle">경기도 버스: ${transitDiagnosticState.bus.ok?'정상 연결':esc(transitDiagnosticState.bus.error||'연결 실패')}</p>`:''}
+  ${transitDiagnosticState.subway?`<p class="subtle">서울 지하철: ${transitDiagnosticState.subway.ok?'정상 연결':esc(transitDiagnosticState.subway.error||'연결 실패')}</p>`:''}
+  ${transitDiagnosticState.checkedAt?`<p class="subtle">확인: ${esc(new Date(transitDiagnosticState.checkedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}))}</p>`:'<p class="subtle">연결 상태를 확인하면 인증키 미설정·서비스 승인·응답 오류를 구분해 표시합니다. 키는 화면에 노출되지 않습니다.</p>'}
  </div>
  <div class="page-layout">
   <section class="card card-padded wide">
@@ -3330,6 +3358,7 @@ async function onAction(el){
   case'deleteRoute':mutate(s=>s.routes=s.routes.filter(x=>x.id!==id));break;
   case'newTransitFav':openEditor('transitFav');break;
   case'deleteTransitFav':mutate(s=>s.transitFavorites=s.transitFavorites.filter(x=>x.id!==id));break;
+  case'diagnoseTransit':diagnoseTransitApis();break;
   case'busSearch':searchBusStations($('busSearchInput')?.value||'');break;
   case'busArrival':fetchBusArrival(id,el.dataset.name||'');break;
   case'detectNearbyTransit':fetchNearbyTransit({useGps:true});break;

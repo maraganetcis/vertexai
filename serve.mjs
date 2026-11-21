@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, extname, resolve } from 'node:path';
 import { GoogleGenAI } from '@google/genai';
+import {gyeonggiUrl,fetchGyeonggi,fetchSeoulSubway,subwayCode} from './transit-connectivity.mjs';
 import { handleSheetSyncRequest } from './sheet-sync-proxy.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -742,9 +743,9 @@ const SUBWAY_LINE_META = {
 async function fetchSubwayLiveList(stationName, subKey) {
   if (!subKey || !stationName) return [];
   const normalized = stationName.length > 1 && stationName.endsWith('역') ? stationName.slice(0, -1) : stationName;
-  const sUrl = `http://swopenAPI.seoul.go.kr/api/subway/${encodeURIComponent(subKey)}/json/realtimeStationArrival/0/12/${encodeURIComponent(normalized)}`;
-  const r = await fetch(sUrl, { signal: AbortSignal.timeout(4500) });
-  const data = await r.json().catch(() => null);
+  const result = await fetchSeoulSubway(normalized,subKey,{timeout:4500,allowHttpFallback:process.env.SEOUL_SUBWAY_HTTPS_ONLY!=='1'});
+  if(!result.ok)throw new Error(result.error);
+  const data = result.data;
   const rawArr = Array.isArray(data?.realtimeArrivalList) ? data.realtimeArrivalList : [];
   return rawArr.map(item => {
     const meta = SUBWAY_LINE_META[String(item.subwayId || '')] || { name: `${item.subwayId || '노선'}`, color: '#0284c7' };
@@ -774,6 +775,22 @@ function parseCoordParam(val) {
 async function handleTransitRoute(req, res, urlObj) {
   opsState.transitRequests++;
   const action = urlObj.searchParams.get('action') || 'arrival';
+
+  if(action==='diagnose'){
+    const busKey=process.env.BUS_API_KEY||process.env.TRANSIT_API_KEY||'';
+    const subKey=process.env.SEOUL_SUBWAY_API_KEY||'';
+    const [bus,subway]=await Promise.all([
+      busKey?fetchGyeonggi(gyeonggiUrl('arrival',busKey,'stationId','200000078'),'경기도 버스 도착',{timeout:5000})
+        :Promise.resolve({ok:false,status:503,error:'BUS_API_KEY 또는 TRANSIT_API_KEY 서버 환경변수가 설정되지 않았습니다.'}),
+      subKey?fetchSeoulSubway('서울',subKey,{timeout:5500,allowHttpFallback:process.env.SEOUL_SUBWAY_HTTPS_ONLY!=='1'})
+        :Promise.resolve({ok:false,status:503,error:'SEOUL_SUBWAY_API_KEY 서버 환경변수가 설정되지 않았습니다.'})
+    ]);
+    return sendJson(res,200,{
+      checkedAt:new Date().toISOString(),
+      bus:{configured:!!busKey,ok:!!bus.ok,status:bus.ok?'connected':'unavailable',error:bus.ok?'':bus.error},
+      subway:{configured:!!subKey,ok:!!subway.ok,status:subway.ok?'connected':'unavailable',error:subway.ok?'':subway.error,transport:subway.usedHttp?'http_official_endpoint':'https'}
+    });
+  }
 
   if (action === 'nearby') {
     let lat = parseCoordParam(urlObj.searchParams.get('lat'));
@@ -820,9 +837,9 @@ async function handleTransitRoute(req, res, urlObj) {
       let arrivals = [];
       if (idx === 0 && busKey && st.distanceMeters <= 15000) {
         try {
-          const aUrl = `https://apis.data.go.kr/6410000/busarrivalservice/v2/getBusArrivalListv2?serviceKey=${encodeURIComponent(busKey)}&stationId=${encodeURIComponent(st.stationId)}&format=json`;
-          const r = await fetch(aUrl, { signal: AbortSignal.timeout(4000) });
-          const d = await r.json().catch(() => null);
+          const upstream=await fetchGyeonggi(gyeonggiUrl('arrival',busKey,'stationId',st.stationId),'경기도 버스 도착',{timeout:4000});
+          if(!upstream.ok)throw new Error(upstream.error);
+          const d=upstream.data;
           const raw = d?.response?.msgBody?.busArrivalList;
           const arr = Array.isArray(raw) ? raw : (raw ? [raw] : []);
           arrivals = arr.slice(0, 6).map(it => ({
@@ -952,37 +969,18 @@ async function handleTransitRoute(req, res, urlObj) {
     // Seoul Open API expects e.g. "강남", "서울", "신촌" without trailing "역"
     const normalized = rawStation.length > 1 && rawStation.endsWith('역') ? rawStation.slice(0, -1) : rawStation;
     try {
-      const fetchSub = async (name) => {
-        const sUrl = `http://swopenAPI.seoul.go.kr/api/subway/${encodeURIComponent(subKey)}/json/realtimeStationArrival/0/20/${encodeURIComponent(name)}`;
-        const r = await fetch(sUrl, { signal: AbortSignal.timeout(5000) });
-        const text = await r.text();
-        let data = null;
-        try { data = JSON.parse(text); } catch {}
-        return { ok: r.ok, status: r.status, data };
-      };
-      let result = await fetchSub(normalized);
-      if ((!result.data?.realtimeArrivalList?.length) && normalized !== rawStation) {
-        const retry = await fetchSub(rawStation);
-        if (retry.data?.realtimeArrivalList?.length) result = retry;
+      let result=await fetchSeoulSubway(normalized,subKey,{allowHttpFallback:process.env.SEOUL_SUBWAY_HTTPS_ONLY!=='1'});
+      if(result.ok&&!result.data?.realtimeArrivalList?.length&&normalized!==rawStation){
+        const retry=await fetchSeoulSubway(rawStation,subKey,{allowHttpFallback:process.env.SEOUL_SUBWAY_HTTPS_ONLY!=='1'});
+        if(retry.ok&&retry.data?.realtimeArrivalList?.length)result=retry;
       }
-      const payload = result.data;
-      if (!result.ok || !payload) {
-        recordError('subway', result.status || 502, `HTTP ${result.status}`);
-        return sendJson(res, 502, { error: '서울시 지하철 API 응답을 해석하지 못했습니다.' });
+      if(!result.ok){
+        recordError('subway',result.status,result.error);
+        return sendJson(res,result.status,{configured:true,error:result.error});
       }
-      const code = payload.errorMessage?.code || payload.CODE || '';
-      if (code && code !== 'INFO-000') {
-        const msg = payload.errorMessage?.message || payload.MESSAGE || '조회 결과 없음';
-        if (code === 'INFO-200') {
-          return sendJson(res, 200, {
-            configured: true,
-            station: normalized,
-            arrivals: [],
-            info: `'${normalized}'역의 현재 운행/도착 열차 정보가 없습니다.`
-          });
-        }
-        recordError('subway', 400, `${code}: ${msg}`);
-        return sendJson(res, 400, { error: `서울 지하철 API 응답(${code}): ${msg}` });
+      const payload=result.data;
+      if(subwayCode(payload)==='INFO-200'){
+        return sendJson(res,200,{configured:true,station:normalized,arrivals:[],info:'현재 운행 중인 도착 예정 열차가 없습니다.'});
       }
       const rawArr = Array.isArray(payload.realtimeArrivalList) ? payload.realtimeArrivalList : [];
       const arrivals = rawArr.map(item => {
@@ -1043,28 +1041,27 @@ async function handleTransitRoute(req, res, urlObj) {
       });
     }
 
-    try {
-      const sUrl = `https://apis.data.go.kr/6410000/busstationservice/v2/getBusStationListv2?serviceKey=${encodeURIComponent(key)}&keyword=${encodeURIComponent(keyword)}&format=json`;
-      const r = await fetch(sUrl, { signal: AbortSignal.timeout(4000) });
-      const text = await r.text();
-      let data = null;
-      try { data = JSON.parse(text); } catch {}
-      const list = data?.response?.msgBody?.busStationList;
-      if (r.ok && data?.response?.msgHeader?.resultCode === 0 && list) {
-        const arr = Array.isArray(list) ? list : [list];
-        return sendJson(res, 200, {
-          configured: true,
-          source: 'busstationservice_v2',
-          stations: arr.slice(0, 15).map(st => ({
-            stationId: String(st.stationId),
-            stationName: String(st.stationName || ''),
-            regionName: String(st.regionName || '경기'),
-            mobileNo: String(st.mobileNo || '')
-          }))
+    let stationLookupMessage='';
+    try{
+      const upstream=await fetchGyeonggi(gyeonggiUrl('stations',key,'keyword',keyword),'경기도 버스 정류장');
+      if(upstream.ok){
+        const list=upstream.data?.response?.msgBody?.busStationList;
+        const arr=Array.isArray(list)?list:list?[list]:[];
+        return sendJson(res,200,{
+          configured:true,source:'busstationservice_v2',
+          stations:arr.slice(0,15).map(st=>({
+            stationId:String(st.stationId||''),
+            stationName:String(st.stationName||''),
+            regionName:String(st.regionName||'경기'),
+            mobileNo:String(st.mobileNo||'')
+          })),
+          info:upstream.empty?'검색 결과가 없습니다.':''
         });
       }
-    } catch {
-      // Fall back below
+      stationLookupMessage=upstream.error;
+      recordError('bus-stations',upstream.status,upstream.error);
+    }catch{
+      stationLookupMessage='경기도 버스 정류장 검색 API 연결 실패';
     }
 
     const q = keyword.toLowerCase();
@@ -1074,8 +1071,8 @@ async function handleTransitRoute(req, res, urlObj) {
     return sendJson(res, 200, {
       configured: true,
       source: 'verified_presets',
-      note: '현재 키는 [버스도착정보 서비스 v2] 전용입니다. 주요 정류장 선택 또는 9자리 정류장 ID 입력으로 실시간 도착을 조회할 수 있습니다.',
-      stations: matched.length ? matched : VERIFIED_GYEONGGI_STATIONS
+      note: stationLookupMessage+' · 공용 검색 실패 시 알려진 주요 정류장만 표시합니다. 정류장 ID를 직접 입력할 수 있습니다.',
+      stations: matched
     });
   }
 
@@ -1085,25 +1082,15 @@ async function handleTransitRoute(req, res, urlObj) {
       return sendJson(res, 400, { error: '조회할 정류장 ID(stationId)가 필요합니다.' });
     }
     try {
-      const aUrl = `https://apis.data.go.kr/6410000/busarrivalservice/v2/getBusArrivalListv2?serviceKey=${encodeURIComponent(key)}&stationId=${encodeURIComponent(stationId)}&format=json`;
-      const r = await fetch(aUrl, { signal: AbortSignal.timeout(5000) });
-      const text = await r.text();
-      let data = null;
-      try { data = JSON.parse(text); } catch {}
-      if (!r.ok || !data?.response) {
-        const errMsg = data?.OpenAPI_ServiceResponse?.cmmMsgHeader?.returnAuthMsg || `HTTP ${r.status}`;
-        recordError('transit', r.status || 502, errMsg);
-        return sendJson(res, r.status >= 400 ? r.status : 502, { error: `경기도 버스 API 오류: ${errMsg}` });
+      if(!/^\d{8,10}$/.test(stationId))return sendJson(res,400,{error:'정류장 ID는 8~10자리 숫자여야 합니다.'});
+      const upstream=await fetchGyeonggi(gyeonggiUrl('arrival',key,'stationId',stationId),'경기도 버스 도착');
+      if(!upstream.ok){
+        recordError('transit',upstream.status,upstream.error);
+        return sendJson(res,upstream.status,{configured:true,error:upstream.error});
       }
-      const header = data.response.msgHeader || {};
-      if (Number(header.resultCode) !== 0) {
-        // resultCode 4 = 결과 없음
-        if (Number(header.resultCode) === 4) {
-          return sendJson(res, 200, { configured: true, stationId, queryTime: header.queryTime, arrivals: [], info: '현재 운행 중인 도착 예정 버스가 없습니다.' });
-        }
-        recordError('transit', 400, `${header.resultCode}: ${header.resultMessage}`);
-        return sendJson(res, 400, { error: `버스 API 응답(${header.resultCode}): ${header.resultMessage || '조회 실패'}` });
-      }
+      const data=upstream.data;
+      const header=data.response.msgHeader||{};
+      if(upstream.empty)return sendJson(res,200,{configured:true,stationId,queryTime:header.queryTime,arrivals:[],info:'현재 운행 중인 도착 예정 버스가 없습니다.'});
       const rawList = data.response.msgBody?.busArrivalList;
       const arr = Array.isArray(rawList) ? rawList : (rawList ? [rawList] : []);
       const arrivals = arr.map(item => ({
