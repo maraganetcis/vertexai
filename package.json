@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "node serve.mjs",
     "start": "node serve.mjs",
-    "test": "node smoke.mjs && node sync.mjs && node build.mjs",
-    "lint": "node --check serve.mjs && node --check app.js && node --check sync.js && node --check firebase-config.js && node --check prepare-public.mjs",
+    "test": "node smoke.mjs && node sync.mjs && node sheet-sync.test.mjs && node build.mjs",
+    "lint": "node --check serve.mjs && node --check app.js && node --check sync.js && node --check firebase-config.js && node --check prepare-public.mjs && node --check sheet-sync-proxy.mjs && node --check sheet-sync.test.mjs",
     "preview": "node serve.mjs",
     "build": "node prepare-public.mjs"
   },
