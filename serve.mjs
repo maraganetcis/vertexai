@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, extname } from 'node:path';
 import { GoogleGenAI } from '@google/genai';
+import { handleSheetSyncRequest } from './sheet-sync-proxy.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 
@@ -1151,101 +1152,21 @@ async function handleSheetSyncRoute(req, res, urlObj) {
     }
   }
 
-  const rawUrl = String(process.env.APPS_SCRIPT_URL || '').trim();
-  if (!rawUrl) {
-    return sendJson(res, 200, { configured: false, reason: 'APPS_SCRIPT_URL 미설정' });
-  }
-
-  let parsedUrl;
-  try {
-    parsedUrl = new URL(rawUrl);
-  } catch {
-    recordError('sheet-sync', 400, 'Invalid APPS_SCRIPT_URL format');
-    return sendJson(res, 400, {
-      configured: false,
-      error: 'APPS_SCRIPT_URL 형식이 올바르지 않습니다.'
-    });
-  }
-
-  if (
-    parsedUrl.protocol !== 'https:' ||
-    parsedUrl.hostname !== 'script.google.com' ||
-    !parsedUrl.pathname.startsWith('/macros/s/')
-  ) {
-    recordError('sheet-sync', 400, 'Rejected non-Apps-Script URL');
-    return sendJson(res, 400, {
-      configured: false,
-      error: '유효한 Google Apps Script 웹 앱 URL(https://script.google.com/macros/s/...)만 허용됩니다.'
-    });
-  }
-
-  const appsToken = String(process.env.APPS_SCRIPT_TOKEN || '').trim();
-  const targetBase = parsedUrl.toString();
-
-  if (req.method === 'GET') {
-    try {
-      const sep = targetBase.includes('?') ? '&' : '?';
-      const pullUrl = appsToken ? `${targetBase}${sep}token=${encodeURIComponent(appsToken)}` : targetBase;
-      const upstream = await fetch(pullUrl, {
-        method: 'GET',
-        redirect: 'follow',
-        signal: AbortSignal.timeout(12000)
-      });
-      const text = await upstream.text();
-      let data = null;
-      try { data = JSON.parse(text); } catch {}
-      if (!upstream.ok || !data || data.ok === false) {
-        const msg = data?.error || `Apps Script 응답 오류 (HTTP ${upstream.status})`;
-        recordError('sheet-sync', upstream.status || 502, msg);
-        return sendJson(res, 502, { configured: true, ok: false, error: msg });
-      }
-      return sendJson(res, 200, { configured: true, ...data });
-    } catch (err) {
-      const msg = String(err?.message || 'Google Apps Script 연결 실패');
-      recordError('sheet-sync', 502, msg);
-      return sendJson(res, 502, { configured: true, ok: false, error: `Google Apps Script 연결 실패: ${msg}` });
-    }
-  }
-
+  let snapshot;
   if (req.method === 'POST') {
-    let body;
     try {
-      body = await readJsonBody(req, 2 * 1024 * 1024);
+      const body = await readJsonBody(req, 1024 * 1024);
+      snapshot = body?.snapshot;
     } catch (e) {
-      recordError('sheet-sync', e.status || 400, e.message);
-      return sendJson(res, e.status || 400, { configured: true, ok: false, error: e.message });
-    }
-    if (!body || typeof body.snapshot !== 'object' || body.snapshot === null) {
-      return sendJson(res, 400, { configured: true, ok: false, error: '유효한 snapshot 객체가 필요합니다.' });
-    }
-    try {
-      const upstream = await fetch(targetBase, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: appsToken,
-          snapshot: body.snapshot
-        }),
-        redirect: 'follow',
-        signal: AbortSignal.timeout(12000)
-      });
-      const text = await upstream.text();
-      let data = null;
-      try { data = JSON.parse(text); } catch {}
-      if (!upstream.ok || !data || data.ok === false) {
-        const msg = data?.error || `Apps Script 저장 오류 (HTTP ${upstream.status})`;
-        recordError('sheet-sync', upstream.status || 502, msg);
-        return sendJson(res, 502, { configured: true, ok: false, error: msg });
-      }
-      return sendJson(res, 200, { configured: true, ...data });
-    } catch (err) {
-      const msg = String(err?.message || 'Google Apps Script 저장 연결 실패');
-      recordError('sheet-sync', 502, msg);
-      return sendJson(res, 502, { configured: true, ok: false, error: `Google Apps Script 저장 실패: ${msg}` });
+      return sendJson(res, e.status || 400, { ok: false, error: e.message });
     }
   }
-
-  return sendJson(res, 405, { error: 'GET 또는 POST 요청만 지원합니다.' });
+  const outcome = await handleSheetSyncRequest({
+    method: req.method,
+    authorization: req.headers.authorization,
+    snapshot
+  });
+  return sendJson(res, outcome.status, outcome.body);
 }
 
 const server = createServer(async (req, res) => {
