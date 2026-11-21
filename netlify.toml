@@ -1,5 +1,5 @@
 [build]
-  command = "node scripts/prepare-public.mjs"
+  command = "node prepare-public.mjs"
   publish = "public"
   functions = "netlify/functions"
 
