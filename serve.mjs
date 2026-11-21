@@ -289,7 +289,7 @@ async function handleAiRoute(req, res) {
     } else {
       const message = String(body.message || '').slice(0, 1500);
       if (!message.trim()) return sendJson(res, 400, { error: '질문 내용을 입력해 주세요.' });
-      promptText = `학생 컨텍스트(JSON): ${studentCtx}\n\n${toolContext?'검증된 도구 조회 결과(JSON, 성공/실패 포함): '+toolContext+'\\n\\n':''}학생 질문: ${message}`;
+      promptText = `학생 컨텍스트(JSON): ${studentCtx}\n\n${toolContext?'검증된 도구 조회 결과(JSON, 성공/실패 포함): '+toolContext+'\n\n':''}학생 질문: ${message}`;
     }
 
     if (groqKey) {
