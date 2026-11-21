@@ -3050,6 +3050,32 @@ function makeAttachmentInput(existing){
   <div class="subtle" id="attachPreviewText" style="margin-top:6px">${existing?`현재 첨부: ${esc(existing.name)}`:'첨부 없음'}</div>`;
 }
 
+function hubEditorFields(){
+ const w=normalizeHomeWidgets(state.settings?.homeWidgets);
+ const apps=normalizeHomeApps(state.settings?.homeApps);
+ const order=normalizeHubWidgetOrder(state.settings?.homeWidgetOrder);
+ return `<div class="hub-editor-intro">내 앱은 빠른 실행 버튼, 위젯은 홈의 정보 카드입니다. 표시와 순서는 자동 저장되고 다른 기기에도 동기화됩니다.</div>
+ <div class="hub-editor-title"><strong>홈의 앱 바로가기</strong><span>${STUDENT_APPS.filter(a=>apps[a.id]).length}개 표시</span></div>
+ <div class="hub-app-choice-grid">
+  ${STUDENT_APPS.map(a=>`<button type="button" class="hub-app-choice ${apps[a.id]?'selected':''}" data-action="toggleHomeApp" data-key="${a.id}" aria-pressed="${apps[a.id]?'true':'false'}">
+   <span class="student-app-icon tone-${a.tone}">${iconSvg(a.icon)}</span><span>${esc(a.label)}</span><small>${apps[a.id]?'✓ 표시':'+ 추가'}</small>
+  </button>`).join('')}
+ </div>
+ <div class="hub-editor-title"><strong>홈 위젯 선택 · 순서</strong><span>${order.filter(k=>w[k]).length}개 표시</span></div>
+ <div class="hub-widget-order-list">
+ ${order.map((key,index)=>{const meta=STUDENT_WIDGETS.find(x=>x.id===key);return `<div class="hub-widget-row">
+   <button type="button" class="hub-widget-toggle ${w[key]?'selected':''}" data-action="toggleWidgetKey" data-key="${key}" aria-pressed="${w[key]?'true':'false'}"><span>${esc(meta?.label||key)}</span><small>${w[key]?'표시 중':'숨김'}</small></button>
+   <div class="hub-order-controls">
+    <button type="button" data-action="moveHubWidget" data-key="${key}" data-direction="up" aria-label="${esc(meta?.label||key)} 위로" ${index===0?'disabled':''}>↑</button>
+    <button type="button" data-action="moveHubWidget" data-key="${key}" data-direction="down" aria-label="${esc(meta?.label||key)} 아래로" ${index===order.length-1?'disabled':''}>↓</button>
+   </div>
+  </div>`}).join('')}
+ </div>`;
+}
+function refreshHubEditor(){
+ if(editKind==='widgets'&&$('formFields'))$('formFields').innerHTML=hubEditorFields();
+}
+
 function openEditor(kind,id='',extra={}){
  editKind=kind;editId=id;pendingAttachment=undefined;
  let fields='',title='';
@@ -3113,10 +3139,8 @@ function openEditor(kind,id='',extra={}){
  if(kind==='grade'){title=id?'과목 성적 수정':'과목 성적 추가';fields=makeField('과목명','subject',obj.subject||'','text',true)+makeField('이수 단위','credits',obj.credits||4,'number',true)+makeField('원점수 (0~100)','score',obj.score||90,'number',true)+makeSelect('등급 (1~9등급)','grade',['1','2','3','4','5','6','7','8','9'],String(obj.grade||2))+makeField('학기','semester',obj.semester||'현재 학기')}
  if(kind==='lesson'){const day=Number(extra.day),index=Number(extra.index),lobj=extra.add?{}:getLessons(day)[index]||{};title=`${DAYS[day]}요일 수업 ${extra.add?'추가':'수정'}`;editId=JSON.stringify({day,index,add:!!extra.add});fields=makeField('교시','period',lobj.period||(getLessons(day).length+1),'number',true)+makeField('과목명','title',lobj.title||'','text',true)+makeField('시작시간','start',lobj.start||'08:50','time',true)+makeField('종료시간','end',lobj.end||'09:35','time',true)}
  if(kind==='widgets'){
-  title='홈 위젯 개인화';
-  const w=state.settings?.homeWidgets||DEFAULT_WIDGETS;
-  const labels={timetable:'오늘의 수업',ddays:'시험 · 디데이',habits:'오늘의 습관',study:'학습 · 노트 바로가기',tasks:'과제 · 할 일',lunch:'급식 · 등교 준비물',calendar:'오늘의 일정',transit:'통학 · 이동'};
-  fields=`<div class="widget-toggle-grid">${Object.entries(labels).map(([k,lbl])=>`<button type="button" class="widget-toggle-btn ${w[k]?'active':''}" data-action="toggleWidgetKey" data-key="${k}"><span>${lbl}</span><span>${w[k]?'표시':'숨김'}</span></button>`).join('')}</div>`;
+  title='내 앱 · 홈 위젯 편집';
+  fields=hubEditorFields();
  }
 
  $('dialogTitle').textContent=title;
@@ -3444,7 +3468,33 @@ async function onAction(el){
   case'editRoutine':openEditor('routine');break;
   case'editWeatherCity':openEditor('weatherCity');break;
   case'editWidgets':openEditor('widgets');break;
-  case'toggleWidgetKey':{const k=el.dataset.key;mutate(s=>{s.settings.homeWidgets[k]=!s.settings.homeWidgets[k]});openEditor('widgets');break}
+  case'openStudentApp':openStudentApp(el.dataset.app);break;
+  case'calendarJump':{
+   const date=String(el.dataset.date||dateISO());
+   calendarSelected=/^\\d{4}-\\d{2}-\\d{2}$/.test(date)?date:dateISO();
+   calendarMonth=calendarSelected.slice(0,7);
+   plannerPanel='events';goPage('planner');if(state.profile.neisCode)autoSyncNeisIfNeeded(false);
+   break;
+  }
+  case'refreshCalendarNeis':if(state.profile.neisCode)fetchNeisSchoolData('schedule');else toast('학교를 먼저 등록해 주세요.');break;
+  case'toggleWidgetKey':{
+   const k=el.dataset.key;
+   if(!STUDENT_WIDGETS.some(x=>x.id===k))break;
+   mutate(s=>{s.settings.homeWidgets=normalizeHomeWidgets(s.settings.homeWidgets);s.settings.homeWidgets[k]=!s.settings.homeWidgets[k]});
+   refreshHubEditor();break;
+  }
+  case'toggleHomeApp':{
+   const k=el.dataset.key;
+   if(!STUDENT_APPS.some(x=>x.id===k))break;
+   mutate(s=>{s.settings.homeApps=normalizeHomeApps(s.settings.homeApps);s.settings.homeApps[k]=!s.settings.homeApps[k]});
+   refreshHubEditor();break;
+  }
+  case'moveHubWidget':{
+   const k=el.dataset.key;
+   if(!STUDENT_WIDGETS.some(x=>x.id===k))break;
+   mutate(s=>{s.settings.homeWidgetOrder=moveWidget(s.settings.homeWidgetOrder,k,el.dataset.direction)});
+   refreshHubEditor();break;
+  }
   case'refreshWeather':fetchWeather(true);break;
   case'detectLocation':detectMyLocation();break;
   case'editRoute':openEditor('route');break;
