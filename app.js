@@ -1,4 +1,5 @@
 import {createCloudSync} from './sync.js';
+import {STUDENT_APPS,STUDENT_WIDGETS,DEFAULT_APP_VISIBILITY,DEFAULT_WIDGET_ORDER,DEFAULT_WIDGET_VISIBILITY,normalizeHomeApps,normalizeHomeWidgets,normalizeHubWidgetOrder,combinedCalendarEntries,moveWidget} from './student-hub.js';
 import {planAssistantTools,gatherAssistantTools,formatAssistantToolAnswer} from './assistant-tools.js';
 
 const KEY='daymate-ai-personal-v1';
@@ -36,10 +37,7 @@ const SCHEDULE=[
  ['사회','수학','영어','국어','체육','창체']
 ];
 
-const DEFAULT_WIDGETS={
- timetable:true,ddays:true,habits:true,study:true,
- tasks:true,lunch:true,calendar:true,transit:true
-};
+const DEFAULT_WIDGETS=DEFAULT_WIDGET_VISIBILITY;
 
 const initial=()=>({
  version:3,
@@ -126,7 +124,7 @@ const initial=()=>({
   quiet:false,quietStart:'22:00',quietEnd:'07:00',
   theme:'light',fontSize:'normal',highContrast:false,
   soundEnabled:true,aiMode:'rules',voiceLoop:false,
-  homeWidgets:{...DEFAULT_WIDGETS}
+  homeWidgets:{...DEFAULT_WIDGETS},homeApps:{...DEFAULT_APP_VISIBILITY},homeWidgetOrder:[...DEFAULT_WIDGET_ORDER]
  }
 });
 
@@ -139,7 +137,7 @@ function cleanState(v){
  return {
   ...base,...v,
   profile:{...base.profile,...v.profile},
-  settings:{...base.settings,...(v.settings||{}),homeWidgets:{...DEFAULT_WIDGETS,...(v.settings?.homeWidgets||{})}},
+  settings:{...base.settings,...(v.settings||{}),homeWidgets:normalizeHomeWidgets(v.settings?.homeWidgets),homeApps:normalizeHomeApps(v.settings?.homeApps),homeWidgetOrder:normalizeHubWidgetOrder(v.settings?.homeWidgetOrder)},
   studySessions:Array.isArray(v.studySessions)?v.studySessions:[],
   chat:Array.isArray(v.chat)?v.chat:[],
   ddays:Array.isArray(v.ddays)?v.ddays:base.ddays,
@@ -463,7 +461,7 @@ function mergeFromSheetSnapshot(remote){
  }
 
  if(remote.settings&&(Number(remote.settingsUpdatedAt)||0)>(Number(state.settingsUpdatedAt)||0)){
-  state.settings={...state.settings,...remote.settings,homeWidgets:{...DEFAULT_WIDGETS,...(remote.settings.homeWidgets||{})}};
+  state.settings={...state.settings,...remote.settings,homeWidgets:normalizeHomeWidgets(remote.settings.homeWidgets),homeApps:normalizeHomeApps(remote.settings.homeApps),homeWidgetOrder:normalizeHubWidgetOrder(remote.settings.homeWidgetOrder)};
   state.settingsUpdatedAt=Number(remote.settingsUpdatedAt)||0;
   applyAppearance();
   changed=true;
