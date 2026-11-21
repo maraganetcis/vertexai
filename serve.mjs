@@ -1294,7 +1294,7 @@ const server = createServer(async (req, res) => {
 });
 
 // Importing this module from a Netlify Function must not start a listening server.
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (!process.env.AWS_LAMBDA_FUNCTION_NAME && !process.env.NETLIFY && process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   server.listen(port, host, () => console.log(`Vertex server listening on http://${host}:${port}`));
 }
 
