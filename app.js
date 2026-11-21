@@ -776,6 +776,7 @@ function iconSvg(kind){
   lunch:`<svg ${a}><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>`,
   calendar:`<svg ${a}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
   transit:`<svg ${a}><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M3 10h18"/><path d="M7 16v3"/><path d="M17 16v3"/><circle cx="7.5" cy="13.5" r="1"/><circle cx="16.5" cy="13.5" r="1"/></svg>`,
+  weather:`<svg ${a}><path d="M20 16.6A4 4 0 0 0 18 9a6 6 0 0 0-11.7 1.8A4 4 0 1 0 7 19h11a4 4 0 0 0 2-2.4Z"/><path d="M4 4v1M1 8h1M7 2h1"/></svg>`,
   note:`<svg ${a}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
   ai:`<svg ${a}><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>`,
   shield:`<svg ${a}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
