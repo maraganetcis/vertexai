@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { dirname, join, extname } from 'node:path';
+import { dirname, join, extname, resolve } from 'node:path';
 import { GoogleGenAI } from '@google/genai';
 import { handleSheetSyncRequest } from './sheet-sync-proxy.mjs';
 
@@ -1293,4 +1293,36 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(port, host, () => console.log(`Vertex server listening on http://${host}:${port}`));
+// Importing this module from a Netlify Function must not start a listening server.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  server.listen(port, host, () => console.log(`Vertex server listening on http://${host}:${port}`));
+}
+
+export async function dispatchServerlessApi({service,method='GET',query='',body='',headers={},ip='netlify'}={}){
+ if(!['ai','neis','weather','transit'].includes(service)){
+  return {statusCode:404,body:JSON.stringify({error:'지원하지 않는 경로입니다.'})};
+ }
+ const path='/api/'+service+(query?'?'+query:'');
+ return await new Promise(resolveResponse=>{
+  let statusCode=500,responseHeaders={};
+  let finished=false;
+  const finish=(value)=>{
+   if(finished)return;finished=true;clearTimeout(timer);
+   resolveResponse({statusCode,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...responseHeaders},body:typeof value==='string'?value:String(value||'')});
+  };
+  const timer=setTimeout(()=>{
+   statusCode=504;finish(JSON.stringify({error:'데이터 조회 시간이 초과되었습니다.'}));
+  },22000);
+  const req={
+   url:path, method,
+   headers:{host:'localhost',...headers},
+   socket:{remoteAddress:ip},
+   async *[Symbol.asyncIterator](){
+    if(method==='POST'&&body)yield Buffer.from(body,'utf8');
+   }
+  };
+  const res={writeHead(status,head={}){statusCode=status;responseHeaders=head;return res;},end:finish};
+  try{server.emit('request',req,res)}catch{statusCode=500;finish(JSON.stringify({error:'서버 처리 오류'}))}
+ });
+}
+
