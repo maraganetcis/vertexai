@@ -1,4 +1,5 @@
 import {createCloudSync} from './sync.js';
+import {STUDENT_APPS,STUDENT_WIDGETS,DEFAULT_APP_VISIBILITY,DEFAULT_WIDGET_ORDER,DEFAULT_WIDGET_VISIBILITY,normalizeHomeApps,normalizeHomeWidgets,normalizeHubWidgetOrder,combinedCalendarEntries,moveWidget} from './student-hub.js';
 import {planAssistantTools,gatherAssistantTools,formatAssistantToolAnswer} from './assistant-tools.js';
 
 const KEY='daymate-ai-personal-v1';
@@ -36,10 +37,7 @@ const SCHEDULE=[
  ['사회','수학','영어','국어','체육','창체']
 ];
 
-const DEFAULT_WIDGETS={
- timetable:true,ddays:true,habits:true,study:true,
- tasks:true,lunch:true,calendar:true,transit:true
-};
+const DEFAULT_WIDGETS=DEFAULT_WIDGET_VISIBILITY;
 
 const initial=()=>({
  version:3,
@@ -126,7 +124,7 @@ const initial=()=>({
   quiet:false,quietStart:'22:00',quietEnd:'07:00',
   theme:'light',fontSize:'normal',highContrast:false,
   soundEnabled:true,aiMode:'rules',voiceLoop:false,
-  homeWidgets:{...DEFAULT_WIDGETS}
+  homeWidgets:{...DEFAULT_WIDGETS},homeApps:{...DEFAULT_APP_VISIBILITY},homeWidgetOrder:[...DEFAULT_WIDGET_ORDER]
  }
 });
 
@@ -139,7 +137,7 @@ function cleanState(v){
  return {
   ...base,...v,
   profile:{...base.profile,...v.profile},
-  settings:{...base.settings,...(v.settings||{}),homeWidgets:{...DEFAULT_WIDGETS,...(v.settings?.homeWidgets||{})}},
+  settings:{...base.settings,...(v.settings||{}),homeWidgets:normalizeHomeWidgets(v.settings?.homeWidgets),homeApps:normalizeHomeApps(v.settings?.homeApps),homeWidgetOrder:normalizeHubWidgetOrder(v.settings?.homeWidgetOrder)},
   studySessions:Array.isArray(v.studySessions)?v.studySessions:[],
   chat:Array.isArray(v.chat)?v.chat:[],
   ddays:Array.isArray(v.ddays)?v.ddays:base.ddays,
@@ -463,7 +461,7 @@ function mergeFromSheetSnapshot(remote){
  }
 
  if(remote.settings&&(Number(remote.settingsUpdatedAt)||0)>(Number(state.settingsUpdatedAt)||0)){
-  state.settings={...state.settings,...remote.settings,homeWidgets:{...DEFAULT_WIDGETS,...(remote.settings.homeWidgets||{})}};
+  state.settings={...state.settings,...remote.settings,homeWidgets:normalizeHomeWidgets(remote.settings.homeWidgets),homeApps:normalizeHomeApps(remote.settings.homeApps),homeWidgetOrder:normalizeHubWidgetOrder(remote.settings.homeWidgetOrder)};
   state.settingsUpdatedAt=Number(remote.settingsUpdatedAt)||0;
   applyAppearance();
   changed=true;
@@ -778,6 +776,7 @@ function iconSvg(kind){
   lunch:`<svg ${a}><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>`,
   calendar:`<svg ${a}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
   transit:`<svg ${a}><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M3 10h18"/><path d="M7 16v3"/><path d="M17 16v3"/><circle cx="7.5" cy="13.5" r="1"/><circle cx="16.5" cy="13.5" r="1"/></svg>`,
+  weather:`<svg ${a}><path d="M20 16.6A4 4 0 0 0 18 9a6 6 0 0 0-11.7 1.8A4 4 0 1 0 7 19h11a4 4 0 0 0 2-2.4Z"/><path d="M4 4v1M1 8h1M7 2h1"/></svg>`,
   note:`<svg ${a}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
   ai:`<svg ${a}><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>`,
   shield:`<svg ${a}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
@@ -1812,14 +1811,19 @@ function calendarCard(){
  let cells='';
  for(let i=0;i<7;i++){
   const d=dateISO(i-start);
-  cells+=`<span class="${d===dateISO()?'selected':''}">${dt(d).getUTCDate()}</span>`;
+  const items=combinedCalendarEntries(state,{date:d});
+  cells+=`<button type="button" class="${d===dateISO()?'selected':''}" data-action="calendarJump" data-date="${d}" aria-label="${d}, 일정 ${items.length}건">${dt(d).getUTCDate()}</button>`;
  }
- const arr=state.events.filter(e=>e.date===dateISO());
+ const arr=combinedCalendarEntries(state,{date:dateISO()});
  return `<section class="card card-padded">
-  ${section('오늘의 일정','planner','캘린더','calendar','cyan')}
+  <div class="card-title"><strong><span class="ic-badge ic-cyan">${iconSvg('calendar')}</span>오늘의 통합 일정</strong><button class="tiny-link" data-action="openStudentApp" data-app="calendar">캘린더 열기 ›</button></div>
   <div class="mini-week">${DAYS.map(n=>`<span>${n}</span>`).join('')}${cells}</div>
   <div style="margin-top:14px">
-   ${arr.length?arr.slice(0,4).map(e=>`<div class="event-line"><strong class="mono">${esc(e.time)}</strong><span>${esc(e.title)}</span><span class="meta-inline">${esc(e.category||'개인')}</span></div>`).join(''):'<div class="empty">오늘 등록된 일정이 없습니다.</div>'}
+   ${arr.length?arr.slice(0,5).map(e=>`<button class="hub-preview-row" data-action="calendarJump" data-date="${esc(e.date)}">
+     <span class="hub-date-label">${esc(e.time|| (e.origin==='academic'?'종일':e.origin==='task'?'마감':'D-Day'))}</span>
+     <span class="hub-preview-title">${esc(e.title)}</span>
+     <span class="hub-source-tag">${e.origin==='academic'?'학교':e.origin==='task'?'과제':e.origin==='dday'?'시험':esc(e.category)}</span>
+    </button>`).join(''):'<div class="empty">오늘 등록된 일정이 없습니다.</div>'}
   </div>
  </section>`;
 }
@@ -1843,22 +1847,97 @@ function notesAndStudyCard(){
  </section>`;
 }
 
+function studentAppsLauncher(){
+ const vis=normalizeHomeApps(state.settings?.homeApps);
+ const apps=STUDENT_APPS.filter(a=>vis[a.id]);
+ const openTasks=state.tasks.filter(t=>!t.done).length;
+ const upcoming=combinedCalendarEntries(state).filter(x=>x.date>=dateISO()).length;
+ return `<section class="student-launcher" aria-label="나의 학생 앱">
+  <div class="student-launcher-head">
+   <div>
+    <span class="student-launcher-eyebrow">MY SPACE · VERTEX</span>
+    <h2>내 앱</h2>
+    <p>하나의 일정과 기록으로 연결된 나의 학습 도구</p>
+   </div>
+   <button class="small-btn" type="button" data-action="editWidgets" aria-label="앱과 위젯 편집">편집</button>
+  </div>
+  <div class="student-launcher-status">
+   <span>미완료 과제 <strong>${openTasks}</strong>개</span>
+   <span>예정 일정 <strong>${upcoming}</strong>건</span>
+   <span>학교 <strong>${esc(state.profile.school||'미등록')}</strong></span>
+  </div>
+  <div class="student-app-grid">
+   ${apps.length?apps.map(a=>`<button class="student-app-tile tone-${a.tone}" type="button" data-action="openStudentApp" data-app="${a.id}" aria-label="${esc(a.label)} 앱 열기">
+     <span class="student-app-icon">${iconSvg(a.icon)}</span>
+     <strong>${esc(a.label)}</strong>
+     <small>${esc(a.hint)}</small>
+   </button>`).join(''):'<div class="empty">표시할 앱이 없어요. 편집에서 다시 선택할 수 있습니다.</div>'}
+  </div>
+ </section>`;
+}
+function academicHomeCard(){
+ const today=dateISO();
+ const list=combinedCalendarEntries(state,{category:'학교/수업'}).filter(x=>x.origin==='academic'&&x.date>=today).slice(0,5);
+ return `<section class="card card-padded">
+  <div class="card-title"><strong><span class="ic-badge ic-emerald">${iconSvg('calendar')}</span>다가오는 학사일정</strong><button class="tiny-link" data-action="openStudentApp" data-app="calendar">캘린더 열기 ›</button></div>
+  ${list.length?list.map(x=>`<button class="hub-preview-row" data-action="calendarJump" data-date="${esc(x.date)}">
+    <span class="hub-date-label">${esc(x.date.slice(5))}</span>
+    <span class="hub-preview-title">${esc(x.title)}</span>
+    <span class="hub-source-tag">${x.source==='NEIS'?'NEIS':'학교'}</span>
+   </button>`).join(''):'<div class="empty">등록된 예정 학사일정이 없습니다. 학교 앱에서 NEIS를 연결해 보세요.</div>'}
+ </section>`;
+}
+function notesHomeCard(){
+ const list=[...(state.notes||[])].sort((a,b)=>Number(!!b.pinned)-Number(!!a.pinned)||(Number(b.updatedAt)||0)-(Number(a.updatedAt)||0)).slice(0,3);
+ return `<section class="card card-padded">
+  <div class="card-title"><strong><span class="ic-badge ic-violet">${iconSvg('note')}</span>최근 노트</strong><button class="tiny-link" data-action="openStudentApp" data-app="notes">노트 열기 ›</button></div>
+  ${list.length?list.map(n=>`<button class="hub-preview-row" data-action="editNote" data-id="${esc(n.id)}">
+    <span class="hub-preview-title">${esc(n.title)}</span><span class="hub-source-tag">${esc(n.tag||'메모')}</span>
+   </button>`).join(''):'<div class="empty">노트 앱에서 첫 메모를 작성해 보세요.</div>'}
+ </section>`;
+}
+function weatherHomeCard(){
+ const w=weatherState.data;
+ return `<section class="card card-padded">
+  <div class="card-title"><strong><span class="ic-badge ic-sky">${iconSvg('weather')}</span>날씨 요약</strong><button class="tiny-link" data-action="openStudentApp" data-app="weather">예보 열기 ›</button></div>
+  ${w?`<div class="hub-weather-summary"><strong>${esc(w.city)} · ${esc(w.temp)}°</strong><span>${esc(w.label)} · 강수확률 ${esc(w.precipProb)}%</span></div>
+  <p class="subtle">${esc(studentWeatherTip(w))}</p>`:'<div class="empty">날씨 정보 조회 전입니다. 홈 날씨 카드를 새로고침해 주세요.</div>'}
+ </section>`;
+}
+function openStudentApp(id){
+ const app=STUDENT_APPS.find(a=>a.id===id);
+ if(!app)return;
+ const selected={
+  calendar:['planner','events'],timetable:['school','timetable'],lunch:['school','timetable'],
+  academic:['school','academic'],weather:['school','weather'],transport:['transport',''],
+  tasks:['planner','tasks'],notes:['planner','notes'],study:['study','timer'],exams:['planner','ddays'],
+  assistant:['assistant',''],habits:['study','habits'],grades:['school','grades']
+ }[id];
+ if(!selected)return;
+ const [target,panel]=selected;
+ if(target==='planner')plannerPanel=panel;
+ if(target==='school')schoolPanel=panel;
+ if(target==='study')studyPanel=panel;
+ goPage(target);
+ if(id==='calendar'&&state.profile.neisCode)autoSyncNeisIfNeeded(false);
+}
+
 function home(){
- const w=state.settings?.homeWidgets||DEFAULT_WIDGETS;
- const leftCards=[];
- if(w.timetable)leftCards.push(lessonCard());
- if(w.ddays)leftCards.push(ddayCard());
- if(w.habits)leftCards.push(habitsHomeCard());
- if(w.study)leftCards.push(notesAndStudyCard());
- const rightCards=[];
- if(w.tasks)rightCards.push(tasksCard());
- if(w.lunch)rightCards.push(lunchAndPrepCard());
- if(w.calendar)rightCards.push(calendarCard());
- if(w.transit)rightCards.push(transitCard());
- return `${topHtml()}
- <div class="dashboard">
-  <div class="stack">${leftCards.join('')||'<div class="empty">표시할 위젯을 설정에서 켜 주세요.</div>'}</div>
-  <div class="stack">${rightCards.join('')}</div>
+ const w=normalizeHomeWidgets(state.settings?.homeWidgets);
+ const cards={
+  timetable:lessonCard,ddays:ddayCard,habits:habitsHomeCard,study:notesAndStudyCard,
+  tasks:tasksCard,lunch:lunchAndPrepCard,calendar:calendarCard,transit:transitCard,
+  academic:academicHomeCard,notes:notesHomeCard,weather:weatherHomeCard
+ };
+ const order=normalizeHubWidgetOrder(state.settings?.homeWidgetOrder);
+ const visible=order.filter(k=>w[k]).map(k=>cards[k]?.()).filter(Boolean);
+ return `${studentAppsLauncher()}${topHtml()}
+ <div class="student-widgets-header">
+  <div><h2>나의 위젯</h2><p>필요한 정보만 골라서 원하는 순서로</p></div>
+  <button class="small-btn" type="button" data-action="editWidgets">위젯 추가·정렬</button>
+ </div>
+ <div class="dashboard student-widget-grid">
+  ${visible.length?visible.join(''):'<div class="empty">위젯이 모두 숨겨졌습니다. 위젯 추가·정렬에서 표시할 위젯을 선택하세요.</div>'}
  </div>
  <section class="ai-banner">
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
@@ -2330,8 +2409,12 @@ function calendarHtml(){
  for(let n=0;n<Math.ceil((weekday+days)/7)*7;n++){
   const day=n-weekday+1;
   const date=new Date(Date.UTC(year,month-1,day)).toISOString().slice(0,10);
-  const count=state.events.filter(e=>e.date===date&&(eventCategoryFilter==='전체'||(e.category||'개인')===eventCategoryFilter)).length;
-  items.push(`<button type="button" class="calendar-day ${date===dateISO()?'today':''} ${calendarSelected===date?'selected':''} ${day<1||day>days?'outside':''}" data-action="calendarDay" data-date="${date}" aria-label="${date}, 일정 ${count}개"><span>${Number(date.slice(-2))}</span>${count?`<i class="event-indicator" aria-hidden="true"></i>`:''}</button>`);
+  const entries=combinedCalendarEntries(state,{date,category:eventCategoryFilter});
+  const schoolCount=entries.filter(x=>x.origin==='academic').length;
+  items.push(`<button type="button" class="calendar-day ${date===dateISO()?'today':''} ${calendarSelected===date?'selected':''} ${day<1||day>days?'outside':''}" data-action="calendarDay" data-date="${date}" aria-label="${date}, 통합 일정 ${entries.length}개">
+    <span>${Number(date.slice(-2))}</span>
+    ${entries.length?`<span class="student-calendar-dots"><i class="event-indicator" aria-hidden="true"></i>${schoolCount?`<i class="event-indicator school-dot" aria-hidden="true"></i>`:''}</span>`:''}
+   </button>`);
  }
  return `<div class="calendar-heading">
   <button data-action="monthPrev" aria-label="이전 달">‹</button>
@@ -2341,38 +2424,56 @@ function calendarHtml(){
  </div>
  <div class="calendar-grid">${DAYS.map(d=>`<span class="calendar-weekday">${d}</span>`).join('')}${items.join('')}</div>`;
 }
-
+function calendarEntryActions(e){
+ if(e.origin==='event')return `<div class="actions"><button class="small-btn" data-action="editEvent" data-id="${esc(e.id)}">수정</button><button class="small-btn danger-text" data-action="deleteEvent" data-id="${esc(e.id)}">삭제</button></div>`;
+ const target=e.origin==='academic'?'academic':e.origin==='task'?'tasks':'exams';
+ return `<button class="small-btn" data-action="openStudentApp" data-app="${target}">${e.origin==='academic'?'학교 일정':e.origin==='task'?'과제':'시험'} 열기</button>`;
+}
+function calendarEntryHtml(e){
+ const kind=e.origin==='academic'?'학교':e.origin==='task'?'과제':e.origin==='dday'?'D-Day':e.category;
+ const time=e.time|| (e.origin==='academic'?'종일':e.origin==='task'?'마감':'목표일');
+ return `<div class="list-item calendar-combined-entry origin-${e.origin}">
+  <div style="min-width:0;flex:1">
+   <span class="student-calendar-origin origin-${e.origin}">${esc(kind)}</span>
+   <strong>${esc(time)} · ${esc(e.title)}</strong>
+   <p>${e.origin==='academic'?`${esc(e.source||'학교')} 연동 · 학교 앱에서도 동일하게 표시`:e.origin==='task'?`${esc(e.record.subject||'기타')} · ${e.record.priority==='high'?'중요 · ':''}과제 앱과 연동`:e.origin==='dday'?'시험 앱과 연동':`${esc(e.category)}${e.record.location?` · 장소: ${esc(e.record.location)}`:''}${Number(e.record.travelMinutes)>0?` · 이동 ${Number(e.record.travelMinutes)}분`:''}${e.record.description?` · ${esc(e.record.description)}`:''}`}</p>
+  </div>
+  ${calendarEntryActions(e)}
+ </div>`;
+}
 function weekCalendarHtml(){
  const base=dt(calendarSelected),dow=base.getUTCDay();
  const rows=[];
  for(let i=0;i<7;i++){
   const d=new Date(base.getTime()+(i-dow)*86400000).toISOString().slice(0,10);
-  const evs=state.events.filter(e=>e.date===d&&(eventCategoryFilter==='전체'||(e.category||'개인')===eventCategoryFilter)).sort((a,b)=>a.time.localeCompare(b.time));
-  rows.push(`<div class="list-item" style="align-items:flex-start">
+  const entries=combinedCalendarEntries(state,{date:d,category:eventCategoryFilter});
+  rows.push(`<div class="calendar-week-row">
    <button class="small-btn" data-action="calendarDay" data-date="${d}">${d.slice(5)} (${DAYS[i]})</button>
-   <div style="flex:1">${evs.length?evs.map(e=>`<div style="font-size:13px;margin-bottom:3px"><strong class="mono">${esc(e.time)}</strong> ${esc(e.title)} <span class="meta-inline">· ${esc(e.category||'개인')}</span></div>`).join(''):'<span class="subtle">일정 없음</span>'}</div>
+   <div class="calendar-week-items">${entries.length?entries.map(e=>`<div><span class="student-calendar-origin origin-${e.origin}">${e.origin==='academic'?'학교':e.origin==='task'?'과제':e.origin==='dday'?'D-Day':'개인'}</span> ${esc(e.time||'종일')} · ${esc(e.title)}</div>`).join(''):'<span class="subtle">일정 없음</span>'}</div>
   </div>`);
  }
  return rows.join('');
 }
-
 function renderEvents(){
- const arr=state.events.filter(e=>e.date===calendarSelected&&(eventCategoryFilter==='전체'||(e.category||'개인')===eventCategoryFilter)).sort((a,b)=>String(a.time).localeCompare(String(b.time)));
+ const arr=combinedCalendarEntries(state,{date:calendarSelected,category:eventCategoryFilter});
  const conflicts=detectEventConflicts(calendarSelected);
- const upcoming=[...state.events].filter(e=>e.date>=dateISO()).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time)).slice(0,6);
+ const upcoming=combinedCalendarEntries(state,{category:eventCategoryFilter}).filter(e=>e.date>=dateISO()).slice(0,7);
  return `<div class="page-layout">
   <section class="card card-padded">
    <div class="card-title">
-    <strong>일정 보기</strong>
+    <strong>통합 캘린더 · 학교와 내 일정</strong>
     <div class="day-tabs" style="margin:0">
-     ${[['month','월'],['week','주'],['day','일']].map(([k,l])=>`<button data-action="calendarViewMode" data-mode="${k}" class="${calendarView===k?'active':''}">${l}</button>`).join('')}
+     ${[['month','월'],['week','주'],['day','일']].map(([k,label])=>`<button data-action="calendarViewMode" data-mode="${k}" class="${calendarView===k?'active':''}">${label}</button>`).join('')}
     </div>
    </div>
+   <p class="subtle" style="margin:0 0 12px">NEIS 학사일정·내 일정·과제 마감·시험 D-Day가 자동으로 함께 표시됩니다. 원본은 각 앱에서 관리해 중복 저장하지 않습니다.</p>
    <div class="day-tabs">
     ${['전체','학교/수업','학원','시험/과제','개인'].map(c=>`<button data-action="eventCatFilter" data-cat="${esc(c)}" class="${eventCategoryFilter===c?'active':''}">${esc(c)}</button>`).join('')}
    </div>
    ${calendarView==='month'?calendarHtml():calendarView==='week'?weekCalendarHtml():`<p class="subtle">${esc(calendarSelected)} 집중 일정 보기</p>`}
+   <div class="student-calendar-legend"><span><i class="event-indicator"></i> 일정</span><span><i class="event-indicator school-dot"></i> 학사일정</span></div>
    <div class="toolbar" style="margin-top:14px;margin-bottom:0">
+    ${state.profile.neisCode?`<button class="btn" data-action="refreshCalendarNeis" ${neisSyncing?'disabled':''}>${neisSyncing?'학교 일정 확인 중…':'NEIS 학사일정 새로고침'}</button>`:''}
     <button class="btn" data-action="exportIcs">.ics 내보내기</button>
     <button class="btn" data-action="importIcsClick">.ics 가져오기</button>
     <input id="icsFile" type="file" accept=".ics,text/calendar" hidden>
@@ -2380,18 +2481,12 @@ function renderEvents(){
    </div>
   </section>
   <section class="card card-padded">
-   <div class="card-title"><strong>${esc(calendarSelected)} 일정</strong><button class="btn primary" data-action="newEvent">+ 일정 추가</button></div>
-   ${conflicts.length?`<div class="conflict-alert">일정 충돌 감지: ${esc(conflicts.join(' / '))}</div>`:''}
-   ${arr.length?arr.map(e=>`<div class="list-item">
-    <div>
-     <strong>${esc(e.time)} · ${esc(e.title)}</strong>
-     <p>${esc(e.category||'개인')}${e.location?` · 장소: ${esc(e.location)}`:''}${Number(e.travelMinutes)>0?` · 이동 ${Number(e.travelMinutes)}분 (출발 ${subtractMinutes(e.time,Number(e.travelMinutes)+5)})`:''}${e.routeSummary?` · ${esc(e.routeSummary)}`:''}${e.repeat&&e.repeat!=='none'?` · ${e.repeat==='weekly'?'매주':'매월'} 반복`:''}${e.description?` · ${esc(e.description)}`:''}</p>
-    </div>
-    <div class="actions"><button class="small-btn" data-action="editEvent" data-id="${esc(e.id)}">수정</button><button class="small-btn danger-text" data-action="deleteEvent" data-id="${esc(e.id)}">삭제</button></div>
-   </div>`).join(''):'<div class="empty">선택한 날의 일정이 없어요.</div>'}
+   <div class="card-title"><strong>${esc(calendarSelected)} 통합 일정 (${arr.length})</strong><button class="btn primary" data-action="newEvent">+ 개인 일정 추가</button></div>
+   ${conflicts.length?`<div class="conflict-alert">개인 일정 간 시간 충돌: ${esc(conflicts.join(' / '))}</div>`:''}
+   ${arr.length?arr.map(calendarEntryHtml).join(''):'<div class="empty">선택한 날의 일정이 없어요.</div>'}
    ${aiScheduleText?`<div class="sync-info" style="margin-top:12px;white-space:pre-wrap"><strong>AI 추천 시간 배분</strong>\n${esc(aiScheduleText)}</div>`:''}
-   <h3 class="upcoming-heading">다가오는 일정</h3>
-   ${upcoming.length?upcoming.map(e=>`<button class="event-jump" data-action="calendarDay" data-date="${esc(e.date)}"><span>${esc(e.date)} ${esc(e.time)}</span><strong>${esc(e.title)}</strong></button>`).join(''):'<div class="empty">예정된 일정이 없어요.</div>'}
+   <h3 class="upcoming-heading">다가오는 통합 일정</h3>
+   ${upcoming.length?upcoming.map(e=>`<button class="event-jump" data-action="calendarDay" data-date="${esc(e.date)}"><span>${esc(e.date)} · ${e.origin==='academic'?'학사':e.origin==='task'?'과제':e.origin==='dday'?'시험':esc(e.time||'개인')}</span><strong>${esc(e.title)}</strong></button>`).join(''):'<div class="empty">예정된 일정이 없어요.</div>'}
   </section>
  </div>`;
 }
@@ -2955,6 +3050,32 @@ function makeAttachmentInput(existing){
   <div class="subtle" id="attachPreviewText" style="margin-top:6px">${existing?`현재 첨부: ${esc(existing.name)}`:'첨부 없음'}</div>`;
 }
 
+function hubEditorFields(){
+ const w=normalizeHomeWidgets(state.settings?.homeWidgets);
+ const apps=normalizeHomeApps(state.settings?.homeApps);
+ const order=normalizeHubWidgetOrder(state.settings?.homeWidgetOrder);
+ return `<div class="hub-editor-intro">내 앱은 빠른 실행 버튼, 위젯은 홈의 정보 카드입니다. 표시와 순서는 자동 저장되고 다른 기기에도 동기화됩니다.</div>
+ <div class="hub-editor-title"><strong>홈의 앱 바로가기</strong><span>${STUDENT_APPS.filter(a=>apps[a.id]).length}개 표시</span></div>
+ <div class="hub-app-choice-grid">
+  ${STUDENT_APPS.map(a=>`<button type="button" class="hub-app-choice ${apps[a.id]?'selected':''}" data-action="toggleHomeApp" data-key="${a.id}" aria-pressed="${apps[a.id]?'true':'false'}">
+   <span class="student-app-icon tone-${a.tone}">${iconSvg(a.icon)}</span><span>${esc(a.label)}</span><small>${apps[a.id]?'✓ 표시':'+ 추가'}</small>
+  </button>`).join('')}
+ </div>
+ <div class="hub-editor-title"><strong>홈 위젯 선택 · 순서</strong><span>${order.filter(k=>w[k]).length}개 표시</span></div>
+ <div class="hub-widget-order-list">
+ ${order.map((key,index)=>{const meta=STUDENT_WIDGETS.find(x=>x.id===key);return `<div class="hub-widget-row">
+   <button type="button" class="hub-widget-toggle ${w[key]?'selected':''}" data-action="toggleWidgetKey" data-key="${key}" aria-pressed="${w[key]?'true':'false'}"><span>${esc(meta?.label||key)}</span><small>${w[key]?'표시 중':'숨김'}</small></button>
+   <div class="hub-order-controls">
+    <button type="button" data-action="moveHubWidget" data-key="${key}" data-direction="up" aria-label="${esc(meta?.label||key)} 위로" ${index===0?'disabled':''}>↑</button>
+    <button type="button" data-action="moveHubWidget" data-key="${key}" data-direction="down" aria-label="${esc(meta?.label||key)} 아래로" ${index===order.length-1?'disabled':''}>↓</button>
+   </div>
+  </div>`}).join('')}
+ </div>`;
+}
+function refreshHubEditor(){
+ if(editKind==='widgets'&&$('formFields'))$('formFields').innerHTML=hubEditorFields();
+}
+
 function openEditor(kind,id='',extra={}){
  editKind=kind;editId=id;pendingAttachment=undefined;
  let fields='',title='';
@@ -3018,10 +3139,8 @@ function openEditor(kind,id='',extra={}){
  if(kind==='grade'){title=id?'과목 성적 수정':'과목 성적 추가';fields=makeField('과목명','subject',obj.subject||'','text',true)+makeField('이수 단위','credits',obj.credits||4,'number',true)+makeField('원점수 (0~100)','score',obj.score||90,'number',true)+makeSelect('등급 (1~9등급)','grade',['1','2','3','4','5','6','7','8','9'],String(obj.grade||2))+makeField('학기','semester',obj.semester||'현재 학기')}
  if(kind==='lesson'){const day=Number(extra.day),index=Number(extra.index),lobj=extra.add?{}:getLessons(day)[index]||{};title=`${DAYS[day]}요일 수업 ${extra.add?'추가':'수정'}`;editId=JSON.stringify({day,index,add:!!extra.add});fields=makeField('교시','period',lobj.period||(getLessons(day).length+1),'number',true)+makeField('과목명','title',lobj.title||'','text',true)+makeField('시작시간','start',lobj.start||'08:50','time',true)+makeField('종료시간','end',lobj.end||'09:35','time',true)}
  if(kind==='widgets'){
-  title='홈 위젯 개인화';
-  const w=state.settings?.homeWidgets||DEFAULT_WIDGETS;
-  const labels={timetable:'오늘의 수업',ddays:'시험 · 디데이',habits:'오늘의 습관',study:'학습 · 노트 바로가기',tasks:'과제 · 할 일',lunch:'급식 · 등교 준비물',calendar:'오늘의 일정',transit:'통학 · 이동'};
-  fields=`<div class="widget-toggle-grid">${Object.entries(labels).map(([k,lbl])=>`<button type="button" class="widget-toggle-btn ${w[k]?'active':''}" data-action="toggleWidgetKey" data-key="${k}"><span>${lbl}</span><span>${w[k]?'표시':'숨김'}</span></button>`).join('')}</div>`;
+  title='내 앱 · 홈 위젯 편집';
+  fields=hubEditorFields();
  }
 
  $('dialogTitle').textContent=title;
@@ -3137,8 +3256,8 @@ function answerMessage(raw){
   return arr.length?`${offset?'내일':'오늘'} 시간표예요.\n`+arr.map(x=>`${x.period}교시 ${x.title} (${x.start})`).join('\n'):`${offset?'내일':'오늘'} 등록된 수업이 없어요.`;
  }
  if(/일정|캘린더|이번 ?주/.test(msg)){
-  const from=dateISO(),to=dateISO(7),list=state.events.filter(x=>x.date>=from&&x.date<=to).sort((a,b)=>a.date.localeCompare(b.date));
-  return list.length?'앞으로 7일간 일정이에요.\n'+list.map(x=>`${x.date} ${x.time} ${x.title}`).join('\n'):'앞으로 7일간 등록된 일정이 없어요.';
+  const from=dateISO(),to=dateISO(7),list=combinedCalendarEntries(state).filter(x=>x.date>=from&&x.date<=to);
+  return list.length?'앞으로 7일간 일정이에요.\n'+list.map(x=>`${x.date} ${x.time||'종일'} ${x.title} (${x.origin==='academic'?'학사':x.origin==='task'?'과제':x.origin==='dday'?'D-Day':'개인'})`).join('\n'):'앞으로 7일간 등록된 일정이 없어요.';
  }
  if(/급식|점심|밥/.test(msg))return state.profile.lunch?`입력된 급식 정보: ${state.profile.lunch}`:'오늘 급식 정보가 아직 등록되지 않았어요.';
  if(/버스|지하철|교통|학교.*(가|도착)/.test(msg))return `저장된 통학 경로: ${state.profile.departure} → ${state.profile.destination}. 실시간 API 연동 상태는 교통 탭에서 확인하세요.`;
@@ -3296,40 +3415,55 @@ async function importData(file){
 }
 
 function exportIcs(){
- const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Synox Studios//Vertex//KO'];
- for(const ev of state.events){
-  const dtStr=(ev.date||'').replace(/-/g,'');
-  const tmStr=(ev.time||'09:00').replace(/:/g,'')+'00';
-  if(dtStr.length===8){
-   lines.push('BEGIN:VEVENT',`UID:${ev.id}@vertex.synox`,`DTSTART:${dtStr}T${tmStr}`,`SUMMARY:${(ev.title||'일정').replace(/\n/g,' ')}`,`DESCRIPTION:${(ev.description||'').replace(/\n/g,' ')}`,'END:VEVENT');
+ const escapeValue=value=>String(value||'').replace(/\\/g,'\\\\').replace(/\r?\n/g,'\\n').replace(/,/g,'\\,').replace(/;/g,'\\;');
+ const lines=['BEGIN:VCALENDAR','VERSION:2.0','CALSCALE:GREGORIAN','PRODID:-//Synox Studios//Vertex//KO'];
+ for(const item of combinedCalendarEntries(state)){
+  const raw=(item.date||'').replace(/-/g,'');
+  if(!/^\d{8}$/.test(raw))continue;
+  const time=String(item.time||'');
+  const uid=(item.origin==='event'?'':item.origin+'-')+String(item.id||'').replace(/[^A-Za-z0-9_-]/g,'-')+'@vertex.synox';
+  const title=escapeValue(item.origin==='task'?'과제 마감 · '+item.title:item.origin==='dday'?'D-Day · '+item.title:item.title);
+  const description=escapeValue((item.origin==='academic'?(item.source||'학교')+' 학사일정':item.origin==='task'?'Vertex 과제 앱':item.origin==='dday'?'Vertex 시험 앱':item.record.description||''));
+  lines.push('BEGIN:VEVENT','UID:'+uid,'X-VERTEX-SOURCE:'+item.origin,'SUMMARY:'+title,'DESCRIPTION:'+description);
+  if(item.origin==='event'&&/^\d{2}:\d{2}$/.test(time)){
+   lines.push('DTSTART:'+raw+'T'+time.replace(':','')+'00');
+  }else{
+   const tomorrow=new Date(Date.UTC(Number(raw.slice(0,4)),Number(raw.slice(4,6))-1,Number(raw.slice(6,8))+1)).toISOString().slice(0,10).replace(/-/g,'');
+   lines.push('DTSTART;VALUE=DATE:'+raw,'DTEND;VALUE=DATE:'+tomorrow);
   }
+  lines.push('END:VEVENT');
  }
  lines.push('END:VCALENDAR');
  const blob=new Blob([lines.join('\r\n')],{type:'text/calendar;charset=utf-8'});
  const url=URL.createObjectURL(blob),a=document.createElement('a');
- a.href=url;a.download=`vertex-calendar-${dateISO()}.ics`;a.click();
+ a.href=url;a.download='vertex-unified-calendar-'+dateISO()+'.ics';a.click();
  setTimeout(()=>URL.revokeObjectURL(url),1000);
- toast('.ics 캘린더 파일을 내려받았습니다');
+ toast('학사일정·과제·시험을 포함한 통합 캘린더 .ics를 내려받았습니다');
 }
-
 async function importIcs(file){
  if(!file)return;
  const text=await file.text();
  const blocks=text.split('BEGIN:VEVENT').slice(1);
  let added=0;
  mutate(s=>{
+  const seen=new Set(s.events.map(e=>[e.date,e.time,e.title].join('|')));
   for(const b of blocks){
-   const sum=(b.match(/SUMMARY:(.*)/)?.[1]||'').trim();
-   const dtRaw=(b.match(/DTSTART[^:]*:(\d{8})(?:T(\d{4}))?/)||[]);
-   if(sum&&dtRaw[1]){
-    const d=`${dtRaw[1].slice(0,4)}-${dtRaw[1].slice(4,6)}-${dtRaw[1].slice(6,8)}`;
-    const t=dtRaw[2]?`${dtRaw[2].slice(0,2)}:${dtRaw[2].slice(2,4)}`:'09:00';
-    s.events.push({id:uid(),title:sum,date:d,time:t,category:'개인',repeat:'none',remind:true,description:'외부 .ics 가져오기'});
-    added++;
-   }
+   // Source-specific items are already derived from NEIS, tasks or D-Day. Do not duplicate them.
+   const source=(b.match(/^X-VERTEX-SOURCE:([a-z]+)\s*$/m)?.[1]||'');
+   if(['academic','task','dday'].includes(source))continue;
+   const sum=(b.match(/^SUMMARY:(.*)$/m)?.[1]||'').trim();
+   const dtRaw=b.match(/DTSTART[^:]*:(\d{8})(?:T(\d{4}))?/);
+   if(!sum||!dtRaw)continue;
+   const d=dtRaw[1].slice(0,4)+'-'+dtRaw[1].slice(4,6)+'-'+dtRaw[1].slice(6,8);
+   const t=dtRaw[2]?dtRaw[2].slice(0,2)+':'+dtRaw[2].slice(2,4):'09:00';
+   const sig=[d,t,sum].join('|');
+   if(seen.has(sig))continue;
+   seen.add(sig);
+   s.events.push({id:uid(),title:sum,date:d,time:t,category:'개인',repeat:'none',remind:true,description:'외부 .ics 가져오기'});
+   added++;
   }
  });
- toast(added?`${added}개 일정을 .ics에서 가져왔습니다`:'가져올 VEVENT를 찾지 못했습니다');
+ toast(added?added+'개 새 일정을 .ics에서 가져왔습니다':'새로 추가할 개인 일정이 없습니다');
 }
 
 // ---------- Actions ----------
@@ -3349,7 +3483,33 @@ async function onAction(el){
   case'editRoutine':openEditor('routine');break;
   case'editWeatherCity':openEditor('weatherCity');break;
   case'editWidgets':openEditor('widgets');break;
-  case'toggleWidgetKey':{const k=el.dataset.key;mutate(s=>{s.settings.homeWidgets[k]=!s.settings.homeWidgets[k]});openEditor('widgets');break}
+  case'openStudentApp':openStudentApp(el.dataset.app);break;
+  case'calendarJump':{
+   const date=String(el.dataset.date||dateISO());
+   calendarSelected=/^\d{4}-\d{2}-\d{2}$/.test(date)?date:dateISO();
+   calendarMonth=calendarSelected.slice(0,7);
+   plannerPanel='events';goPage('planner');if(state.profile.neisCode)autoSyncNeisIfNeeded(false);
+   break;
+  }
+  case'refreshCalendarNeis':if(state.profile.neisCode)fetchNeisSchoolData('schedule');else toast('학교를 먼저 등록해 주세요.');break;
+  case'toggleWidgetKey':{
+   const k=el.dataset.key;
+   if(!STUDENT_WIDGETS.some(x=>x.id===k))break;
+   mutate(s=>{s.settings.homeWidgets=normalizeHomeWidgets(s.settings.homeWidgets);s.settings.homeWidgets[k]=!s.settings.homeWidgets[k]});
+   refreshHubEditor();break;
+  }
+  case'toggleHomeApp':{
+   const k=el.dataset.key;
+   if(!STUDENT_APPS.some(x=>x.id===k))break;
+   mutate(s=>{s.settings.homeApps=normalizeHomeApps(s.settings.homeApps);s.settings.homeApps[k]=!s.settings.homeApps[k]});
+   refreshHubEditor();break;
+  }
+  case'moveHubWidget':{
+   const k=el.dataset.key;
+   if(!STUDENT_WIDGETS.some(x=>x.id===k))break;
+   mutate(s=>{s.settings.homeWidgetOrder=moveWidget(s.settings.homeWidgetOrder,k,el.dataset.direction)});
+   refreshHubEditor();break;
+  }
   case'refreshWeather':fetchWeather(true);break;
   case'detectLocation':detectMyLocation();break;
   case'editRoute':openEditor('route');break;
