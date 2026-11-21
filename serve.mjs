@@ -1358,8 +1358,7 @@ const server = createServer(async (req, res) => {
       'Content-Type': mime[extname(name)] || 'application/octet-stream',
       'Cache-Control': 'no-cache',
       'X-Content-Type-Options': 'nosniff',
-      'Referrer-Policy': 'no-referrer',
-      'X-Frame-Options': 'DENY'
+      'Referrer-Policy': 'no-referrer'
     });
     res.end(req.method === 'HEAD' ? undefined : data);
   } catch {
