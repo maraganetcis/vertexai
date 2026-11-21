@@ -3415,40 +3415,55 @@ async function importData(file){
 }
 
 function exportIcs(){
- const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Synox Studios//Vertex//KO'];
- for(const ev of state.events){
-  const dtStr=(ev.date||'').replace(/-/g,'');
-  const tmStr=(ev.time||'09:00').replace(/:/g,'')+'00';
-  if(dtStr.length===8){
-   lines.push('BEGIN:VEVENT',`UID:${ev.id}@vertex.synox`,`DTSTART:${dtStr}T${tmStr}`,`SUMMARY:${(ev.title||'일정').replace(/\n/g,' ')}`,`DESCRIPTION:${(ev.description||'').replace(/\n/g,' ')}`,'END:VEVENT');
+ const escapeValue=value=>String(value||'').replace(/\\/g,'\\\\').replace(/\r?\n/g,'\\n').replace(/,/g,'\\,').replace(/;/g,'\\;');
+ const lines=['BEGIN:VCALENDAR','VERSION:2.0','CALSCALE:GREGORIAN','PRODID:-//Synox Studios//Vertex//KO'];
+ for(const item of combinedCalendarEntries(state)){
+  const raw=(item.date||'').replace(/-/g,'');
+  if(!/^\d{8}$/.test(raw))continue;
+  const time=String(item.time||'');
+  const uid=(item.origin==='event'?'':item.origin+'-')+String(item.id||'').replace(/[^A-Za-z0-9_-]/g,'-')+'@vertex.synox';
+  const title=escapeValue(item.origin==='task'?'과제 마감 · '+item.title:item.origin==='dday'?'D-Day · '+item.title:item.title);
+  const description=escapeValue((item.origin==='academic'?(item.source||'학교')+' 학사일정':item.origin==='task'?'Vertex 과제 앱':item.origin==='dday'?'Vertex 시험 앱':item.record.description||''));
+  lines.push('BEGIN:VEVENT','UID:'+uid,'X-VERTEX-SOURCE:'+item.origin,'SUMMARY:'+title,'DESCRIPTION:'+description);
+  if(item.origin==='event'&&/^\d{2}:\d{2}$/.test(time)){
+   lines.push('DTSTART:'+raw+'T'+time.replace(':','')+'00');
+  }else{
+   const tomorrow=new Date(Date.UTC(Number(raw.slice(0,4)),Number(raw.slice(4,6))-1,Number(raw.slice(6,8))+1)).toISOString().slice(0,10).replace(/-/g,'');
+   lines.push('DTSTART;VALUE=DATE:'+raw,'DTEND;VALUE=DATE:'+tomorrow);
   }
+  lines.push('END:VEVENT');
  }
  lines.push('END:VCALENDAR');
  const blob=new Blob([lines.join('\r\n')],{type:'text/calendar;charset=utf-8'});
  const url=URL.createObjectURL(blob),a=document.createElement('a');
- a.href=url;a.download=`vertex-calendar-${dateISO()}.ics`;a.click();
+ a.href=url;a.download='vertex-unified-calendar-'+dateISO()+'.ics';a.click();
  setTimeout(()=>URL.revokeObjectURL(url),1000);
- toast('.ics 캘린더 파일을 내려받았습니다');
+ toast('학사일정·과제·시험을 포함한 통합 캘린더 .ics를 내려받았습니다');
 }
-
 async function importIcs(file){
  if(!file)return;
  const text=await file.text();
  const blocks=text.split('BEGIN:VEVENT').slice(1);
  let added=0;
  mutate(s=>{
+  const seen=new Set(s.events.map(e=>[e.date,e.time,e.title].join('|')));
   for(const b of blocks){
-   const sum=(b.match(/SUMMARY:(.*)/)?.[1]||'').trim();
-   const dtRaw=(b.match(/DTSTART[^:]*:(\d{8})(?:T(\d{4}))?/)||[]);
-   if(sum&&dtRaw[1]){
-    const d=`${dtRaw[1].slice(0,4)}-${dtRaw[1].slice(4,6)}-${dtRaw[1].slice(6,8)}`;
-    const t=dtRaw[2]?`${dtRaw[2].slice(0,2)}:${dtRaw[2].slice(2,4)}`:'09:00';
-    s.events.push({id:uid(),title:sum,date:d,time:t,category:'개인',repeat:'none',remind:true,description:'외부 .ics 가져오기'});
-    added++;
-   }
+   // Source-specific items are already derived from NEIS, tasks or D-Day. Do not duplicate them.
+   const source=(b.match(/^X-VERTEX-SOURCE:([a-z]+)\s*$/m)?.[1]||'');
+   if(['academic','task','dday'].includes(source))continue;
+   const sum=(b.match(/^SUMMARY:(.*)$/m)?.[1]||'').trim();
+   const dtRaw=b.match(/DTSTART[^:]*:(\d{8})(?:T(\d{4}))?/);
+   if(!sum||!dtRaw)continue;
+   const d=dtRaw[1].slice(0,4)+'-'+dtRaw[1].slice(4,6)+'-'+dtRaw[1].slice(6,8);
+   const t=dtRaw[2]?dtRaw[2].slice(0,2)+':'+dtRaw[2].slice(2,4):'09:00';
+   const sig=[d,t,sum].join('|');
+   if(seen.has(sig))continue;
+   seen.add(sig);
+   s.events.push({id:uid(),title:sum,date:d,time:t,category:'개인',repeat:'none',remind:true,description:'외부 .ics 가져오기'});
+   added++;
   }
  });
- toast(added?`${added}개 일정을 .ics에서 가져왔습니다`:'가져올 VEVENT를 찾지 못했습니다');
+ toast(added?added+'개 새 일정을 .ics에서 가져왔습니다':'새로 추가할 개인 일정이 없습니다');
 }
 
 // ---------- Actions ----------
