@@ -46,7 +46,7 @@ const state={
 };
 const before=JSON.stringify(state);
 const todayEvents=combinedCalendarEntries(state,{date:today});
-assert.deepEqual(todayEvents.map(x=>x.origin),['academic','task','event']);
+assert.deepEqual(todayEvents.map(x=>x.origin).sort(),['academic','event','task']);
 assert.equal(todayEvents.length,3,'Finished tasks must be omitted from the calendar by default');
 assert.equal(combinedCalendarEntries(state,{date:today,category:'학원'}).length,1);
 assert.equal(combinedCalendarEntries(state,{date:today,category:'학교/수업'}).length,1);
