@@ -10,6 +10,7 @@ export const STUDENT_APPS=Object.freeze([
  {id:'exams',label:'시험',icon:'dday',tone:'amber',hint:'디데이'},
  {id:'assistant',label:'AI 비서',icon:'ai',tone:'violet',hint:'종합 브리핑'},
  {id:'academic',label:'학교 일정',icon:'calendar',tone:'emerald',hint:'NEIS 학사'},
+ {id:'weather',label:'날씨',icon:'weather',tone:'sky',hint:'기온·강수'},
  {id:'habits',label:'습관',icon:'habit',tone:'emerald',hint:'오늘의 루틴'},
  {id:'grades',label:'성적',icon:'school',tone:'indigo',hint:'내신 관리'}
 ]);
@@ -24,7 +25,7 @@ export const STUDENT_WIDGETS=Object.freeze([
  {id:'study',label:'집중·학습',app:'study'},
  {id:'notes',label:'최근 노트',app:'notes'},
  {id:'habits',label:'오늘의 습관',app:'habits'},
- {id:'weather',label:'날씨 한눈에',app:'lunch'}
+ {id:'weather',label:'날씨 한눈에',app:'weather'}
 ]);
 export const DEFAULT_APP_VISIBILITY=Object.freeze(Object.fromEntries(STUDENT_APPS.map(app=>[app.id,true])));
 export const DEFAULT_WIDGET_VISIBILITY=Object.freeze({
