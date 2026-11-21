@@ -16,4 +16,4 @@ jobs:
       - name: Node regression and security checks (no package install)
         run: npm test
       - name: Check scripts and server syntax
-        run: node --check sheet-sync-proxy.mjs && node --check netlify/functions/vertex-sheet-sync.mjs && node --check app.js && node --check serve.mjs && node --check assistant-tools.js && node --check netlify/functions/vertex-public-api.mjs && node --check transit-connectivity.mjs && node --check transit-connectivity.test.mjs
+        run: node --check sheet-sync-proxy.mjs && node --check netlify/functions/vertex-sheet-sync.mjs && node --check app.js && node --check serve.mjs && node --check assistant-tools.js && node --check netlify/functions/vertex-public-api.mjs && node --check transit-connectivity.mjs && node --check transit-connectivity.test.mjs && node --check student-hub.js && node --check student-hub.test.mjs
