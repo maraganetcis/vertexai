@@ -3122,7 +3122,7 @@ async function sendChat(text){
  if(!raw||aiLoading)return;
  const mode=state.settings?.aiMode||'rules';
  const isCommand=/과제.*(추가|등록|만들)|숙제.*(등록|추가)|일정.*(추가|등록|만들)|메모.*(추가|작성|만들)|노트.*(추가|작성|만들)/.test(raw);
- const toolPlan=planAssistantTools(raw,{profile:state.profile,transitFavorites:state.transitFavorites},dateISO());
+ const toolPlan=planAssistantTools(raw,{profile:state.profile,transitFavorites:state.demo?[]:state.transitFavorites},dateISO());
  const relevant=toolPlan.requests.length>0||toolPlan.notices.length>0;
  if(isCommand){
   const answer=answerMessage(raw);
@@ -3137,7 +3137,7 @@ async function sendChat(text){
  try{
   let live=null,grounded='';
   if(relevant){
-   live=await gatherAssistantTools(raw,{profile:state.profile,transitFavorites:state.transitFavorites},{dateISO:dateISO()});
+   live=await gatherAssistantTools(raw,{profile:state.profile,transitFavorites:state.demo?[]:state.transitFavorites},{dateISO:dateISO()});
    const student=buildStudentContext();
    if(live.targetDate!==dateISO())student.todayLessons=getLessons(dt(live.targetDate).getUTCDay()).map(l=>l.period+'교시 '+l.title);
    grounded=formatAssistantToolAnswer(live,student);
