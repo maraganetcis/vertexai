@@ -7,6 +7,12 @@
   node_bundler = "esbuild"
 
 [[redirects]]
+  from = "/api/sheet-sync"
+  to = "/.netlify/functions/vertex-sheet-sync"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/api/voice"
   to = "/.netlify/functions/vertex-voice"
   status = 200
