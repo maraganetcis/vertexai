@@ -1,4 +1,5 @@
 import {createCloudSync} from './sync.js';
+import {planAssistantTools,gatherAssistantTools,formatAssistantToolAnswer} from './assistant-tools.js';
 
 const KEY='daymate-ai-personal-v1';
 const WEATHER_CACHE_KEY='vertex-weather-cache-v1';
@@ -2644,17 +2645,17 @@ function renderAcademicTools(){
  const aiMode=state.settings?.aiMode||'rules';
  const isGenAi=aiMode==='gemini'||aiMode==='groq';
  const voiceLoop=!!state.settings?.voiceLoop;
- const quickPrompts=['오늘 요약','날씨 어때?','오늘 할 일','내일 시간표','시험 디데이','공부 통계','과제 추가'];
+ const quickPrompts=['오늘 날씨·급식·교통 종합','오늘 급식','내일 시간표','버스 언제 와?','오늘 할 일','시험 디데이','과제 추가'];
  return `<div class="page-title">
   <span class="kicker">PERSONAL ASSISTANT</span>
   <h1>Vertex 비서</h1>
-  <p>규칙 기반 빠른 조회와 생성형 Groq AI(계정 내 최대 무료 사용량 모델 자동 선택) 자유 대화·계획 추천을 사용하세요.</p>
+  <p>NEIS 시간표·급식, 날씨, 버스·지하철 도착과 내 일정·과제를 채팅에서 함께 확인할 수 있어요. 조회 실패 시 추측하지 않습니다.</p>
  </div>
  <section class="card card-padded">
   <div class="toolbar" style="justify-content:space-between">
    <div class="day-tabs" style="margin:0">
-    <button data-action="setAiMode" data-mode="rules" class="${!isGenAi?'active':''}">기본 비서 (오프라인 규칙)</button>
-    <button data-action="setAiMode" data-mode="gemini" class="${isGenAi?'active':''}">생성형 AI (Groq · 무료 고속)</button>
+    <button data-action="setAiMode" data-mode="rules" class="${!isGenAi?'active':''}">기본 비서 · 실시간 조회</button>
+    <button data-action="setAiMode" data-mode="gemini" class="${isGenAi?'active':''}">생성형 AI · 통합 조회</button>
    </div>
    <div style="display:flex;gap:8px">
     <button class="small-btn" data-action="toggleVoiceLoop">${voiceLoop?'연속 음성 켜짐':'연속 음성 끔'}</button>
@@ -3118,19 +3119,42 @@ function answerMessage(raw){
 
 async function sendChat(text){
  const raw=String(text||'').trim().slice(0,1000);
- if(!raw)return;
+ if(!raw||aiLoading)return;
  const mode=state.settings?.aiMode||'rules';
- if((mode==='gemini'||mode==='groq')&&!/과제.*(추가|등록)|일정.*(추가|등록)|메모.*(추가|작성)/.test(raw)){
-  mutate(s=>{s.chat.push({role:'user',text:raw});s.chat=s.chat.slice(-100)});
+ const isCommand=/과제.*(추가|등록|만들)|숙제.*(등록|추가)|일정.*(추가|등록|만들)|메모.*(추가|작성|만들)|노트.*(추가|작성|만들)/.test(raw);
+ const toolPlan=planAssistantTools(raw,{profile:state.profile,transitFavorites:state.transitFavorites},dateISO());
+ const relevant=toolPlan.requests.length>0||toolPlan.notices.length>0;
+ if(isCommand){
+  const answer=answerMessage(raw);
+  mutate(s=>{s.chat.push({role:'user',text:raw},{role:'assistant',text:answer});s.chat=s.chat.slice(-100)});
   goPage('assistant');
-  const res=await callServerAI('chat',{message:raw});
-  const reply=res.ok?res.data.reply:`[AI 오류] ${res.error}`;
-  mutate(s=>{s.chat.push({role:'assistant',text:reply});s.chat=s.chat.slice(-100)});
-  if(state.settings?.voiceLoop)readLatestAnswer();
   return;
  }
- const ans=answerMessage(raw);
- mutate(s=>{s.chat.push({role:'user',text:raw},{role:'assistant',text:ans});s.chat=s.chat.slice(-100)});
+ mutate(s=>{s.chat.push({role:'user',text:raw});s.chat=s.chat.slice(-100)});
+ goPage('assistant');
+ aiLoading=true;render();
+ let reply='';
+ try{
+  let live=null,grounded='';
+  if(relevant){
+   live=await gatherAssistantTools(raw,{profile:state.profile,transitFavorites:state.transitFavorites},{dateISO:dateISO()});
+   const student=buildStudentContext();
+   if(live.targetDate!==dateISO())student.todayLessons=getLessons(dt(live.targetDate).getUTCDay()).map(l=>l.period+'교시 '+l.title);
+   grounded=formatAssistantToolAnswer(live,student);
+  }
+  if(mode==='gemini'||mode==='groq'){
+   const result=await callServerAI('chat',{message:raw,...(live?{toolContext:live}:{})});
+   reply=result.ok?String(result.data.reply||'').trim():(grounded||'[AI 오류] '+result.error);
+   if(result.ok&&grounded&&live?.results?.some(x=>x.status==='unavailable'))reply+='\n\n※ 일부 실시간 조회가 실패했습니다. 확인되지 않은 시간·정보는 추정하지 마세요.';
+  }else{
+   reply=relevant?grounded:answerMessage(raw);
+  }
+ }catch(err){
+  reply='통합 조회 중 오류가 발생했습니다. '+(err?.message||'잠시 후 다시 시도하세요.');
+ }finally{
+  aiLoading=false;
+ }
+ mutate(s=>{s.chat.push({role:'assistant',text:reply});s.chat=s.chat.slice(-100)});
  goPage('assistant');
  if(state.settings?.voiceLoop)readLatestAnswer();
 }
