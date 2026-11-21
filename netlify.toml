@@ -7,6 +7,30 @@
   node_bundler = "esbuild"
 
 [[redirects]]
+  from = "/api/ai"
+  to = "/.netlify/functions/vertex-public-api?service=ai"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/neis"
+  to = "/.netlify/functions/vertex-public-api?service=neis"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/weather"
+  to = "/.netlify/functions/vertex-public-api?service=weather"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/transit"
+  to = "/.netlify/functions/vertex-public-api?service=transit"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/api/sheet-sync"
   to = "/.netlify/functions/vertex-sheet-sync"
   status = 200
