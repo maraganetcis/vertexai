@@ -1841,22 +1841,97 @@ function notesAndStudyCard(){
  </section>`;
 }
 
+function studentAppsLauncher(){
+ const vis=normalizeHomeApps(state.settings?.homeApps);
+ const apps=STUDENT_APPS.filter(a=>vis[a.id]);
+ const openTasks=state.tasks.filter(t=>!t.done).length;
+ const upcoming=combinedCalendarEntries(state).filter(x=>x.date>=dateISO()).length;
+ return `<section class="student-launcher" aria-label="나의 학생 앱">
+  <div class="student-launcher-head">
+   <div>
+    <span class="student-launcher-eyebrow">MY SPACE · VERTEX</span>
+    <h2>내 앱</h2>
+    <p>하나의 일정과 기록으로 연결된 나의 학습 도구</p>
+   </div>
+   <button class="small-btn" type="button" data-action="editWidgets" aria-label="앱과 위젯 편집">편집</button>
+  </div>
+  <div class="student-launcher-status">
+   <span>미완료 과제 <strong>${openTasks}</strong>개</span>
+   <span>예정 일정 <strong>${upcoming}</strong>건</span>
+   <span>학교 <strong>${esc(state.profile.school||'미등록')}</strong></span>
+  </div>
+  <div class="student-app-grid">
+   ${apps.length?apps.map(a=>`<button class="student-app-tile tone-${a.tone}" type="button" data-action="openStudentApp" data-app="${a.id}" aria-label="${esc(a.label)} 앱 열기">
+     <span class="student-app-icon">${iconSvg(a.icon)}</span>
+     <strong>${esc(a.label)}</strong>
+     <small>${esc(a.hint)}</small>
+   </button>`).join(''):'<div class="empty">표시할 앱이 없어요. 편집에서 다시 선택할 수 있습니다.</div>'}
+  </div>
+ </section>`;
+}
+function academicHomeCard(){
+ const today=dateISO();
+ const list=combinedCalendarEntries(state,{category:'학교/수업'}).filter(x=>x.origin==='academic'&&x.date>=today).slice(0,5);
+ return `<section class="card card-padded">
+  <div class="card-title"><strong><span class="ic-badge ic-emerald">${iconSvg('calendar')}</span>다가오는 학사일정</strong><button class="tiny-link" data-action="openStudentApp" data-app="calendar">캘린더 열기 ›</button></div>
+  ${list.length?list.map(x=>`<button class="hub-preview-row" data-action="calendarJump" data-date="${esc(x.date)}">
+    <span class="hub-date-label">${esc(x.date.slice(5))}</span>
+    <span class="hub-preview-title">${esc(x.title)}</span>
+    <span class="hub-source-tag">${x.source==='NEIS'?'NEIS':'학교'}</span>
+   </button>`).join(''):'<div class="empty">등록된 예정 학사일정이 없습니다. 학교 앱에서 NEIS를 연결해 보세요.</div>'}
+ </section>`;
+}
+function notesHomeCard(){
+ const list=[...(state.notes||[])].sort((a,b)=>Number(!!b.pinned)-Number(!!a.pinned)||(Number(b.updatedAt)||0)-(Number(a.updatedAt)||0)).slice(0,3);
+ return `<section class="card card-padded">
+  <div class="card-title"><strong><span class="ic-badge ic-violet">${iconSvg('note')}</span>최근 노트</strong><button class="tiny-link" data-action="openStudentApp" data-app="notes">노트 열기 ›</button></div>
+  ${list.length?list.map(n=>`<button class="hub-preview-row" data-action="editNote" data-id="${esc(n.id)}">
+    <span class="hub-preview-title">${esc(n.title)}</span><span class="hub-source-tag">${esc(n.tag||'메모')}</span>
+   </button>`).join(''):'<div class="empty">노트 앱에서 첫 메모를 작성해 보세요.</div>'}
+ </section>`;
+}
+function weatherHomeCard(){
+ const w=weatherState.data;
+ return `<section class="card card-padded">
+  <div class="card-title"><strong><span class="ic-badge ic-sky">${iconSvg('weather')}</span>날씨 요약</strong><button class="tiny-link" data-action="openStudentApp" data-app="weather">예보 열기 ›</button></div>
+  ${w?`<div class="hub-weather-summary"><strong>${esc(w.city)} · ${esc(w.temp)}°</strong><span>${esc(w.label)} · 강수확률 ${esc(w.precipProb)}%</span></div>
+  <p class="subtle">${esc(studentWeatherTip(w))}</p>`:'<div class="empty">날씨 정보 조회 전입니다. 홈 날씨 카드를 새로고침해 주세요.</div>'}
+ </section>`;
+}
+function openStudentApp(id){
+ const app=STUDENT_APPS.find(a=>a.id===id);
+ if(!app)return;
+ const selected={
+  calendar:['planner','events'],timetable:['school','timetable'],lunch:['school','timetable'],
+  academic:['school','academic'],weather:['school','weather'],transport:['transport',''],
+  tasks:['planner','tasks'],notes:['planner','notes'],study:['study','timer'],exams:['planner','ddays'],
+  assistant:['assistant',''],habits:['study','habits'],grades:['school','grades']
+ }[id];
+ if(!selected)return;
+ const [target,panel]=selected;
+ if(target==='planner')plannerPanel=panel;
+ if(target==='school')schoolPanel=panel;
+ if(target==='study')studyPanel=panel;
+ goPage(target);
+ if(id==='calendar'&&state.profile.neisCode)autoSyncNeisIfNeeded(false);
+}
+
 function home(){
- const w=state.settings?.homeWidgets||DEFAULT_WIDGETS;
- const leftCards=[];
- if(w.timetable)leftCards.push(lessonCard());
- if(w.ddays)leftCards.push(ddayCard());
- if(w.habits)leftCards.push(habitsHomeCard());
- if(w.study)leftCards.push(notesAndStudyCard());
- const rightCards=[];
- if(w.tasks)rightCards.push(tasksCard());
- if(w.lunch)rightCards.push(lunchAndPrepCard());
- if(w.calendar)rightCards.push(calendarCard());
- if(w.transit)rightCards.push(transitCard());
- return `${topHtml()}
- <div class="dashboard">
-  <div class="stack">${leftCards.join('')||'<div class="empty">표시할 위젯을 설정에서 켜 주세요.</div>'}</div>
-  <div class="stack">${rightCards.join('')}</div>
+ const w=normalizeHomeWidgets(state.settings?.homeWidgets);
+ const cards={
+  timetable:lessonCard,ddays:ddayCard,habits:habitsHomeCard,study:notesAndStudyCard,
+  tasks:tasksCard,lunch:lunchAndPrepCard,calendar:calendarCard,transit:transitCard,
+  academic:academicHomeCard,notes:notesHomeCard,weather:weatherHomeCard
+ };
+ const order=normalizeHubWidgetOrder(state.settings?.homeWidgetOrder);
+ const visible=order.filter(k=>w[k]).map(k=>cards[k]?.()).filter(Boolean);
+ return `${studentAppsLauncher()}${topHtml()}
+ <div class="student-widgets-header">
+  <div><h2>나의 위젯</h2><p>필요한 정보만 골라서 원하는 순서로</p></div>
+  <button class="small-btn" type="button" data-action="editWidgets">위젯 추가·정렬</button>
+ </div>
+ <div class="dashboard student-widget-grid">
+  ${visible.length?visible.join(''):'<div class="empty">위젯이 모두 숨겨졌습니다. 위젯 추가·정렬에서 표시할 위젯을 선택하세요.</div>'}
  </div>
  <section class="ai-banner">
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
