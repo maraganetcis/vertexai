@@ -1141,9 +1141,10 @@ async function callServerAI(action,payload={}){
  }
  aiLoading=true;render();
  try{
+  const aiIdToken=await cloud.getIdToken();
   const res=await fetch('/api/ai',{
    method:'POST',
-   headers:{'Content-Type':'application/json'},
+   headers:{'Content-Type':'application/json',...(aiIdToken?{Authorization:'Bearer '+aiIdToken}:{})},
    body:JSON.stringify({action,context:buildStudentContext(),memory:state.profile.aiMemory||'',...payload})
   });
   const data=await res.json();
