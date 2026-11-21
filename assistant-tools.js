@@ -19,7 +19,7 @@ export function planAssistantTools(question, context={}, dateISO='2026-11-21') {
   const meal=multi||/급식|점심|식단|오늘.*밥|내일.*밥/.test(q);
   const timetable=multi||/시간표|수업|몇 ?교시|오늘.*과목|내일.*과목/.test(q);
   const academic=/학사|방학|개학|학교.*행사|학교.*일정/.test(q);
-  const transport=multi||/버스|지하철|교통|통학|등교|하교|출발|도착|막차|환승|경로|소요 ?시간/.test(q);
+  const transport=multi||directionsRequested(q)||/버스|지하철|교통|통학|등교|하교|출발|도착|막차|환승|경로|소요 ?시간/.test(q);
   const tomorrow=/내일|다음 ?날/.test(q);
   const day=tomorrow?nextISO(dateISO,1):dateISO;
   const p=context.profile||{};
