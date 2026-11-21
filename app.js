@@ -3256,8 +3256,8 @@ function answerMessage(raw){
   return arr.length?`${offset?'내일':'오늘'} 시간표예요.\n`+arr.map(x=>`${x.period}교시 ${x.title} (${x.start})`).join('\n'):`${offset?'내일':'오늘'} 등록된 수업이 없어요.`;
  }
  if(/일정|캘린더|이번 ?주/.test(msg)){
-  const from=dateISO(),to=dateISO(7),list=state.events.filter(x=>x.date>=from&&x.date<=to).sort((a,b)=>a.date.localeCompare(b.date));
-  return list.length?'앞으로 7일간 일정이에요.\n'+list.map(x=>`${x.date} ${x.time} ${x.title}`).join('\n'):'앞으로 7일간 등록된 일정이 없어요.';
+  const from=dateISO(),to=dateISO(7),list=combinedCalendarEntries(state).filter(x=>x.date>=from&&x.date<=to);
+  return list.length?'앞으로 7일간 일정이에요.\n'+list.map(x=>`${x.date} ${x.time||'종일'} ${x.title} (${x.origin==='academic'?'학사':x.origin==='task'?'과제':x.origin==='dday'?'D-Day':'개인'})`).join('\n'):'앞으로 7일간 등록된 일정이 없어요.';
  }
  if(/급식|점심|밥/.test(msg))return state.profile.lunch?`입력된 급식 정보: ${state.profile.lunch}`:'오늘 급식 정보가 아직 등록되지 않았어요.';
  if(/버스|지하철|교통|학교.*(가|도착)/.test(msg))return `저장된 통학 경로: ${state.profile.departure} → ${state.profile.destination}. 실시간 API 연동 상태는 교통 탭에서 확인하세요.`;
@@ -3471,7 +3471,7 @@ async function onAction(el){
   case'openStudentApp':openStudentApp(el.dataset.app);break;
   case'calendarJump':{
    const date=String(el.dataset.date||dateISO());
-   calendarSelected=/^\\d{4}-\\d{2}-\\d{2}$/.test(date)?date:dateISO();
+   calendarSelected=/^\d{4}-\d{2}-\d{2}$/.test(date)?date:dateISO();
    calendarMonth=calendarSelected.slice(0,7);
    plannerPanel='events';goPage('planner');if(state.profile.neisCode)autoSyncNeisIfNeeded(false);
    break;
