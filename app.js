@@ -1811,14 +1811,19 @@ function calendarCard(){
  let cells='';
  for(let i=0;i<7;i++){
   const d=dateISO(i-start);
-  cells+=`<span class="${d===dateISO()?'selected':''}">${dt(d).getUTCDate()}</span>`;
+  const items=combinedCalendarEntries(state,{date:d});
+  cells+=`<button type="button" class="${d===dateISO()?'selected':''}" data-action="calendarJump" data-date="${d}" aria-label="${d}, 일정 ${items.length}건">${dt(d).getUTCDate()}</button>`;
  }
- const arr=state.events.filter(e=>e.date===dateISO());
+ const arr=combinedCalendarEntries(state,{date:dateISO()});
  return `<section class="card card-padded">
-  ${section('오늘의 일정','planner','캘린더','calendar','cyan')}
+  <div class="card-title"><strong><span class="ic-badge ic-cyan">${iconSvg('calendar')}</span>오늘의 통합 일정</strong><button class="tiny-link" data-action="openStudentApp" data-app="calendar">캘린더 열기 ›</button></div>
   <div class="mini-week">${DAYS.map(n=>`<span>${n}</span>`).join('')}${cells}</div>
   <div style="margin-top:14px">
-   ${arr.length?arr.slice(0,4).map(e=>`<div class="event-line"><strong class="mono">${esc(e.time)}</strong><span>${esc(e.title)}</span><span class="meta-inline">${esc(e.category||'개인')}</span></div>`).join(''):'<div class="empty">오늘 등록된 일정이 없습니다.</div>'}
+   ${arr.length?arr.slice(0,5).map(e=>`<button class="hub-preview-row" data-action="calendarJump" data-date="${esc(e.date)}">
+     <span class="hub-date-label">${esc(e.time|| (e.origin==='academic'?'종일':e.origin==='task'?'마감':'D-Day'))}</span>
+     <span class="hub-preview-title">${esc(e.title)}</span>
+     <span class="hub-source-tag">${e.origin==='academic'?'학교':e.origin==='task'?'과제':e.origin==='dday'?'시험':esc(e.category)}</span>
+    </button>`).join(''):'<div class="empty">오늘 등록된 일정이 없습니다.</div>'}
   </div>
  </section>`;
 }
@@ -2404,8 +2409,12 @@ function calendarHtml(){
  for(let n=0;n<Math.ceil((weekday+days)/7)*7;n++){
   const day=n-weekday+1;
   const date=new Date(Date.UTC(year,month-1,day)).toISOString().slice(0,10);
-  const count=state.events.filter(e=>e.date===date&&(eventCategoryFilter==='전체'||(e.category||'개인')===eventCategoryFilter)).length;
-  items.push(`<button type="button" class="calendar-day ${date===dateISO()?'today':''} ${calendarSelected===date?'selected':''} ${day<1||day>days?'outside':''}" data-action="calendarDay" data-date="${date}" aria-label="${date}, 일정 ${count}개"><span>${Number(date.slice(-2))}</span>${count?`<i class="event-indicator" aria-hidden="true"></i>`:''}</button>`);
+  const entries=combinedCalendarEntries(state,{date,category:eventCategoryFilter});
+  const schoolCount=entries.filter(x=>x.origin==='academic').length;
+  items.push(`<button type="button" class="calendar-day ${date===dateISO()?'today':''} ${calendarSelected===date?'selected':''} ${day<1||day>days?'outside':''}" data-action="calendarDay" data-date="${date}" aria-label="${date}, 통합 일정 ${entries.length}개">
+    <span>${Number(date.slice(-2))}</span>
+    ${entries.length?`<span class="student-calendar-dots"><i class="event-indicator" aria-hidden="true"></i>${schoolCount?`<i class="event-indicator school-dot" aria-hidden="true"></i>`:''}</span>`:''}
+   </button>`);
  }
  return `<div class="calendar-heading">
   <button data-action="monthPrev" aria-label="이전 달">‹</button>
@@ -2415,38 +2424,56 @@ function calendarHtml(){
  </div>
  <div class="calendar-grid">${DAYS.map(d=>`<span class="calendar-weekday">${d}</span>`).join('')}${items.join('')}</div>`;
 }
-
+function calendarEntryActions(e){
+ if(e.origin==='event')return `<div class="actions"><button class="small-btn" data-action="editEvent" data-id="${esc(e.id)}">수정</button><button class="small-btn danger-text" data-action="deleteEvent" data-id="${esc(e.id)}">삭제</button></div>`;
+ const target=e.origin==='academic'?'academic':e.origin==='task'?'tasks':'exams';
+ return `<button class="small-btn" data-action="openStudentApp" data-app="${target}">${e.origin==='academic'?'학교 일정':e.origin==='task'?'과제':'시험'} 열기</button>`;
+}
+function calendarEntryHtml(e){
+ const kind=e.origin==='academic'?'학교':e.origin==='task'?'과제':e.origin==='dday'?'D-Day':e.category;
+ const time=e.time|| (e.origin==='academic'?'종일':e.origin==='task'?'마감':'목표일');
+ return `<div class="list-item calendar-combined-entry origin-${e.origin}">
+  <div style="min-width:0;flex:1">
+   <span class="student-calendar-origin origin-${e.origin}">${esc(kind)}</span>
+   <strong>${esc(time)} · ${esc(e.title)}</strong>
+   <p>${e.origin==='academic'?`${esc(e.source||'학교')} 연동 · 학교 앱에서도 동일하게 표시`:e.origin==='task'?`${esc(e.record.subject||'기타')} · ${e.record.priority==='high'?'중요 · ':''}과제 앱과 연동`:e.origin==='dday'?'시험 앱과 연동':`${esc(e.category)}${e.record.location?` · 장소: ${esc(e.record.location)}`:''}${Number(e.record.travelMinutes)>0?` · 이동 ${Number(e.record.travelMinutes)}분`:''}${e.record.description?` · ${esc(e.record.description)}`:''}`}</p>
+  </div>
+  ${calendarEntryActions(e)}
+ </div>`;
+}
 function weekCalendarHtml(){
  const base=dt(calendarSelected),dow=base.getUTCDay();
  const rows=[];
  for(let i=0;i<7;i++){
   const d=new Date(base.getTime()+(i-dow)*86400000).toISOString().slice(0,10);
-  const evs=state.events.filter(e=>e.date===d&&(eventCategoryFilter==='전체'||(e.category||'개인')===eventCategoryFilter)).sort((a,b)=>a.time.localeCompare(b.time));
-  rows.push(`<div class="list-item" style="align-items:flex-start">
+  const entries=combinedCalendarEntries(state,{date:d,category:eventCategoryFilter});
+  rows.push(`<div class="calendar-week-row">
    <button class="small-btn" data-action="calendarDay" data-date="${d}">${d.slice(5)} (${DAYS[i]})</button>
-   <div style="flex:1">${evs.length?evs.map(e=>`<div style="font-size:13px;margin-bottom:3px"><strong class="mono">${esc(e.time)}</strong> ${esc(e.title)} <span class="meta-inline">· ${esc(e.category||'개인')}</span></div>`).join(''):'<span class="subtle">일정 없음</span>'}</div>
+   <div class="calendar-week-items">${entries.length?entries.map(e=>`<div><span class="student-calendar-origin origin-${e.origin}">${e.origin==='academic'?'학교':e.origin==='task'?'과제':e.origin==='dday'?'D-Day':'개인'}</span> ${esc(e.time||'종일')} · ${esc(e.title)}</div>`).join(''):'<span class="subtle">일정 없음</span>'}</div>
   </div>`);
  }
  return rows.join('');
 }
-
 function renderEvents(){
- const arr=state.events.filter(e=>e.date===calendarSelected&&(eventCategoryFilter==='전체'||(e.category||'개인')===eventCategoryFilter)).sort((a,b)=>String(a.time).localeCompare(String(b.time)));
+ const arr=combinedCalendarEntries(state,{date:calendarSelected,category:eventCategoryFilter});
  const conflicts=detectEventConflicts(calendarSelected);
- const upcoming=[...state.events].filter(e=>e.date>=dateISO()).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time)).slice(0,6);
+ const upcoming=combinedCalendarEntries(state,{category:eventCategoryFilter}).filter(e=>e.date>=dateISO()).slice(0,7);
  return `<div class="page-layout">
   <section class="card card-padded">
    <div class="card-title">
-    <strong>일정 보기</strong>
+    <strong>통합 캘린더 · 학교와 내 일정</strong>
     <div class="day-tabs" style="margin:0">
-     ${[['month','월'],['week','주'],['day','일']].map(([k,l])=>`<button data-action="calendarViewMode" data-mode="${k}" class="${calendarView===k?'active':''}">${l}</button>`).join('')}
+     ${[['month','월'],['week','주'],['day','일']].map(([k,label])=>`<button data-action="calendarViewMode" data-mode="${k}" class="${calendarView===k?'active':''}">${label}</button>`).join('')}
     </div>
    </div>
+   <p class="subtle" style="margin:0 0 12px">NEIS 학사일정·내 일정·과제 마감·시험 D-Day가 자동으로 함께 표시됩니다. 원본은 각 앱에서 관리해 중복 저장하지 않습니다.</p>
    <div class="day-tabs">
     ${['전체','학교/수업','학원','시험/과제','개인'].map(c=>`<button data-action="eventCatFilter" data-cat="${esc(c)}" class="${eventCategoryFilter===c?'active':''}">${esc(c)}</button>`).join('')}
    </div>
    ${calendarView==='month'?calendarHtml():calendarView==='week'?weekCalendarHtml():`<p class="subtle">${esc(calendarSelected)} 집중 일정 보기</p>`}
+   <div class="student-calendar-legend"><span><i class="event-indicator"></i> 일정</span><span><i class="event-indicator school-dot"></i> 학사일정</span></div>
    <div class="toolbar" style="margin-top:14px;margin-bottom:0">
+    ${state.profile.neisCode?`<button class="btn" data-action="refreshCalendarNeis" ${neisSyncing?'disabled':''}>${neisSyncing?'학교 일정 확인 중…':'NEIS 학사일정 새로고침'}</button>`:''}
     <button class="btn" data-action="exportIcs">.ics 내보내기</button>
     <button class="btn" data-action="importIcsClick">.ics 가져오기</button>
     <input id="icsFile" type="file" accept=".ics,text/calendar" hidden>
@@ -2454,18 +2481,12 @@ function renderEvents(){
    </div>
   </section>
   <section class="card card-padded">
-   <div class="card-title"><strong>${esc(calendarSelected)} 일정</strong><button class="btn primary" data-action="newEvent">+ 일정 추가</button></div>
-   ${conflicts.length?`<div class="conflict-alert">일정 충돌 감지: ${esc(conflicts.join(' / '))}</div>`:''}
-   ${arr.length?arr.map(e=>`<div class="list-item">
-    <div>
-     <strong>${esc(e.time)} · ${esc(e.title)}</strong>
-     <p>${esc(e.category||'개인')}${e.location?` · 장소: ${esc(e.location)}`:''}${Number(e.travelMinutes)>0?` · 이동 ${Number(e.travelMinutes)}분 (출발 ${subtractMinutes(e.time,Number(e.travelMinutes)+5)})`:''}${e.routeSummary?` · ${esc(e.routeSummary)}`:''}${e.repeat&&e.repeat!=='none'?` · ${e.repeat==='weekly'?'매주':'매월'} 반복`:''}${e.description?` · ${esc(e.description)}`:''}</p>
-    </div>
-    <div class="actions"><button class="small-btn" data-action="editEvent" data-id="${esc(e.id)}">수정</button><button class="small-btn danger-text" data-action="deleteEvent" data-id="${esc(e.id)}">삭제</button></div>
-   </div>`).join(''):'<div class="empty">선택한 날의 일정이 없어요.</div>'}
+   <div class="card-title"><strong>${esc(calendarSelected)} 통합 일정 (${arr.length})</strong><button class="btn primary" data-action="newEvent">+ 개인 일정 추가</button></div>
+   ${conflicts.length?`<div class="conflict-alert">개인 일정 간 시간 충돌: ${esc(conflicts.join(' / '))}</div>`:''}
+   ${arr.length?arr.map(calendarEntryHtml).join(''):'<div class="empty">선택한 날의 일정이 없어요.</div>'}
    ${aiScheduleText?`<div class="sync-info" style="margin-top:12px;white-space:pre-wrap"><strong>AI 추천 시간 배분</strong>\n${esc(aiScheduleText)}</div>`:''}
-   <h3 class="upcoming-heading">다가오는 일정</h3>
-   ${upcoming.length?upcoming.map(e=>`<button class="event-jump" data-action="calendarDay" data-date="${esc(e.date)}"><span>${esc(e.date)} ${esc(e.time)}</span><strong>${esc(e.title)}</strong></button>`).join(''):'<div class="empty">예정된 일정이 없어요.</div>'}
+   <h3 class="upcoming-heading">다가오는 통합 일정</h3>
+   ${upcoming.length?upcoming.map(e=>`<button class="event-jump" data-action="calendarDay" data-date="${esc(e.date)}"><span>${esc(e.date)} · ${e.origin==='academic'?'학사':e.origin==='task'?'과제':e.origin==='dday'?'시험':esc(e.time||'개인')}</span><strong>${esc(e.title)}</strong></button>`).join(''):'<div class="empty">예정된 일정이 없어요.</div>'}
   </section>
  </div>`;
 }
