@@ -20,7 +20,9 @@ export function mergeDaymateStates(local,remote){
  if(local?.demo&&!remote?.demo)return remote;
  if(remote?.demo&&!local?.demo)return local;
  const merged={...remote,...local,version:Math.max(1,local?.version||1,remote?.version||1),demo:!!(local?.demo&&remote?.demo)};
- for(const group of ['tasks','notes','events','studySessions'])merged[group]=unionById(local?.[group],remote?.[group]);
+ for(const group of ['tasks','notes','events','studySessions','ddays','grades','flashcards','habits','prepItems','routes','wrongNotes','academicEvents','examChecklist','transitFavorites']){
+  if(Array.isArray(local?.[group])||Array.isArray(remote?.[group]))merged[group]=unionById(local?.[group],remote?.[group]);
+ }
  const byDay=new Map();
  for(const item of remote?.lessons||[])byDay.set(item.day,{day:item.day,subjects:[...(item.subjects||[])]});
  for(const item of local?.lessons||[]){const existing=byDay.get(item.day);byDay.set(item.day,{day:item.day,subjects:unionById(item.subjects,existing?.subjects)});}

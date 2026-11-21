@@ -1,0 +1,11 @@
+{
+  "name": "Vertex",
+  "description": "Vertex — Synox Studios의 개인용 학습·일정·날씨·AI 비서 플랫폼",
+  "requestFramePermissions": [
+    "microphone",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

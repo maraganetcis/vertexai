@@ -12,6 +12,7 @@
     "build": "node prepare-public.mjs"
   },
   "dependencies": {
+    "@google/genai": "^3.6.1",
     "firebase-admin": "^13.0.0"
   }
 }
