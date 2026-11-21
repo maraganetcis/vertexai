@@ -1,10 +1,16 @@
 [build]
-  command = "node scripts/prepare-public.mjs"
+  command = "node prepare-public.mjs"
   publish = "public"
   functions = "netlify/functions"
 
 [functions]
   node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/api/sheet-sync"
+  to = "/.netlify/functions/vertex-sheet-sync"
+  status = 200
+  force = true
 
 [[redirects]]
   from = "/api/voice"

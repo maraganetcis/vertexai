@@ -1,0 +1,19 @@
+name: Vertex free checks
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Node regression and security checks (no package install)
+        run: npm test
+      - name: Check scripts and server syntax
+        run: node --check sheet-sync-proxy.mjs && node --check netlify/functions/vertex-sheet-sync.mjs && node --check app.js && node --check serve.mjs

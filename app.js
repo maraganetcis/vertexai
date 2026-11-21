@@ -234,6 +234,7 @@ const SYNCED_COLLECTIONS=[
 ];
 let sheetSyncState={configured:null,syncing:false,lastSyncAt:0,error:'',serverTime:0};
 let sheetPushTimer=null;
+let pendingSheetSync=false;
 
 const cloud=createCloudSync({
  getState:()=>state,
@@ -473,88 +474,89 @@ function mergeFromSheetSnapshot(remote){
  return changed;
 }
 
+async function sheetSyncRequest(method, snapshot){
+ const token=await cloud.getIdToken();
+ if(!token)throw new Error('먼저 Firebase Google 로그인으로 본인 인증이 필요합니다.');
+ const options={
+  method,headers:{Authorization:'Bearer '+token},
+  credentials:'omit',cache:'no-store'
+ };
+ if(method==='POST'){
+  options.headers['Content-Type']='application/json';
+  options.body=JSON.stringify({snapshot});
+ }
+ const res=await fetch('/api/sheet-sync',options);
+ const data=await res.json().catch(()=>({}));
+ if(!res.ok||data.ok!==true)throw new Error(data.error||'Google Sheets 동기화 오류 ('+res.status+')');
+ return data;
+}
 async function pullSheetSync(manual=false){
  if(typeof fetch!=='function'||!globalThis.location?.protocol?.startsWith('http'))return false;
  if(sheetSyncState.syncing)return false;
  if(!manual&&($('editorDialog')?.open||$('confirmDialog')?.open))return false;
+ if(!cloud.connected){
+  if(manual)toast('설정에서 Firebase Google 로그인을 먼저 연결하세요.');
+  return false;
+ }
  sheetSyncState.syncing=true;
  if(manual)render();
  try{
-  const res=await fetch('/api/sheet-sync',{cache:'no-store'});
-  const data=await res.json().catch(()=>({}));
-  sheetSyncState.configured=!!data.configured;
-  if(!data.configured){
-   sheetSyncState.error='';
-   if(manual)toast('Settings > Secrets에 APPS_SCRIPT_URL이 아직 설정되지 않았어요.');
-   return false;
-  }
-  if(!res.ok||data.ok===false){
-   sheetSyncState.error=data.error||`HTTP ${res.status}`;
-   if(manual)toast('Google Sheets 동기화 실패: '+sheetSyncState.error);
-   return false;
-  }
+  const data=await sheetSyncRequest('GET');
+  sheetSyncState.configured=true;
   sheetSyncState.error='';
   sheetSyncState.lastSyncAt=Date.now();
   sheetSyncState.serverTime=Number(data.serverTime)||Date.now();
   if(data.snapshot){
-   const updated=mergeFromSheetSnapshot(data.snapshot);
-   const remCount=SYNCED_COLLECTIONS.reduce((n,c)=>n+(Array.isArray(data.snapshot[c])?data.snapshot[c].length:0),0);
-   if(remCount===0&&(state.tasks.length||state.notes.length||state.events.length)){
-    sheetSyncState.syncing=false;
-    return await pushSheetSync(manual);
-   }
-   if(manual)toast(updated?'Google Sheets에서 최신 변경사항을 불러와 반영했어요':'Google Sheets와 최신 상태입니다');
+   const changed=mergeFromSheetSnapshot(data.snapshot);
+   if(manual)toast(changed?'Google Sheets의 변경사항을 반영했습니다.':'최신 자료입니다.');
   }
   return true;
- }catch{
-  sheetSyncState.error='동기화 서버에 연결할 수 없습니다.';
+ }catch(e){
+  sheetSyncState.error=e.message||'Sheets 동기화 실패';
   if(manual)toast(sheetSyncState.error);
   return false;
  }finally{
   sheetSyncState.syncing=false;
   render();
+  if(pendingSheetSync){
+   pendingSheetSync=false;
+   scheduleSheetPush();
+  }
  }
 }
-
 async function pushSheetSync(manual=false){
  if(typeof fetch!=='function'||!globalThis.location?.protocol?.startsWith('http'))return false;
- if(sheetSyncState.configured===false)return false;
- if(sheetSyncState.syncing)return false;
+ if(!cloud.connected){
+  if(manual)toast('설정에서 Firebase Google 로그인을 먼저 연결하세요.');
+  return false;
+ }
+ if(sheetSyncState.syncing){pendingSheetSync=true;return false;}
  sheetSyncState.syncing=true;
  if(manual)render();
  try{
-  const res=await fetch('/api/sheet-sync',{
-   method:'POST',
-   headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({snapshot:buildSheetSnapshot()}),
-   cache:'no-store'
-  });
-  const data=await res.json().catch(()=>({}));
-  sheetSyncState.configured=!!data.configured;
-  if(!data.configured)return false;
-  if(!res.ok||data.ok===false){
-   sheetSyncState.error=data.error||`HTTP ${res.status}`;
-   if(manual)toast('Google Sheets 저장 실패: '+sheetSyncState.error);
-   return false;
-  }
+  const data=await sheetSyncRequest('POST',buildSheetSnapshot());
+  sheetSyncState.configured=true;
   sheetSyncState.error='';
   sheetSyncState.lastSyncAt=Date.now();
   sheetSyncState.serverTime=Number(data.serverTime)||Date.now();
   if(data.snapshot)mergeFromSheetSnapshot(data.snapshot);
-  if(manual)toast('Google Sheets에 저장 및 병합 완료했습니다');
+  if(manual)toast('Google Sheets에 저장 및 병합 완료했습니다.');
   return true;
- }catch{
-  sheetSyncState.error='Google Sheets 저장 중 네트워크 오류';
+ }catch(e){
+  sheetSyncState.error=e.message||'Sheets 저장 실패';
   if(manual)toast(sheetSyncState.error);
   return false;
  }finally{
   sheetSyncState.syncing=false;
   render();
+  if(pendingSheetSync){
+   pendingSheetSync=false;
+   scheduleSheetPush();
+  }
  }
 }
-
 function scheduleSheetPush(){
- if(sheetSyncState.configured!==true)return;
+ if(!cloud.connected)return;
  clearTimeout(sheetPushTimer);
  sheetPushTimer=setTimeout(()=>{pushSheetSync(false)},1500);
 }
@@ -2783,10 +2785,10 @@ function settings(){
    ${section('Google Sheets · Apps Script 다중 기기 실시간 동기화','','','sync','emerald')}
    <div class="sync-info">
     ${sheetSyncState.configured===true
-     ?`<strong style="color:var(--good)">Apps Script 웹 앱 연동됨</strong> · 20초 간격 &amp; 변경 즉시 자동 동기화${sheetSyncState.lastSyncAt?` (최근 동기화: ${new Date(sheetSyncState.lastSyncAt).toLocaleTimeString('ko-KR')})`:''}`
+     ?`<strong style="color:var(--good)">Apps Script 인증 연결됨</strong> · 20초 주기 확인 및 변경 후 업로드${sheetSyncState.lastSyncAt?` (최근 동기화: ${new Date(sheetSyncState.lastSyncAt).toLocaleTimeString('ko-KR')})`:''}`
      :sheetSyncState.configured===false
-      ?'<strong>서버 시크릿 설정 대기 중</strong> · 아래 <code>.gs</code> 스크립트를 내 Google 스프레드시트에 배포한 뒤, <code>Settings &gt; Secrets</code>에 <code>APPS_SCRIPT_URL</code>(선택 <code>APPS_SCRIPT_TOKEN</code>)을 등록하면 다른 기기에서도 실시간 동기화됩니다.'
-      :'연동 상태 확인 중… (서버 Secrets의 <code>APPS_SCRIPT_URL</code>을 자동 감지합니다)'}
+      ?'<strong>Google 로그인 및 서버 연결 필요</strong> · Apps Script URL·토큰과 Firebase 소유자 인증을 서버에서 설정하세요.'
+      :'본인 Google 로그인 후 동기화를 사용할 수 있습니다. Apps Script 설정 방법은 APPS_SCRIPT_SETUP.md를 확인하세요.'}
     ${sheetSyncState.error?`<div style="margin-top:6px;color:var(--danger)">오류: ${esc(sheetSyncState.error)}</div>`:''}
    </div>
    <div class="toolbar" style="margin-top:12px">
@@ -2794,7 +2796,7 @@ function settings(){
     <button class="btn" data-action="downloadGs">vertex-apps-script.gs 다운로드</button>
     <button class="btn ghost" data-action="copyGs">스크립트 코드 복사</button>
    </div>
-   <div class="subtle" style="margin-top:8px">1) 새 Google 시트 &rarr; [확장 프로그램 &gt; Apps Script]에 <code>.gs</code> 코드 붙여넣기 &rarr; 2) [배포 &gt; 웹 앱(모든 사용자)] 후 생성된 <code>https://script.google.com/macros/s/.../exec</code> URL을 Secrets(<code>APPS_SCRIPT_URL</code>)에 추가하세요.</div>
+   <div class="subtle" style="margin-top:8px">Google Sheets 동기화는 Firebase 소유자 인증과 서버 환경변수 APPS_SCRIPT_URL, APPS_SCRIPT_TOKEN이 모두 있어야 합니다. 인증되지 않은 상태에서는 개인 자료가 전송되지 않습니다.</div>
   </section>
   <section class="card card-padded">
    ${section('Firebase 계정 동기화 · 다중 기기 복구')}
@@ -3676,7 +3678,7 @@ applyAppearance();
 render();
 fetchWeather(false);
 autoSyncNeisIfNeeded(false);
-pullSheetSync(false);
+// Do not sync private Sheets before owner login.
 
 if(globalThis.location?.protocol?.startsWith('http')&&typeof setInterval==='function'){
  setInterval(()=>{
@@ -3684,12 +3686,12 @@ if(globalThis.location?.protocol?.startsWith('http')&&typeof setInterval==='func
   if((page==='home'||page==='transport')&&!dlg?.open)render();
  },30000);
  setInterval(()=>{
-  if(sheetSyncState.configured===true&&document.visibilityState==='visible'&&!$('editorDialog')?.open&&!$('confirmDialog')?.open){
+  if(cloud.connected&&document.visibilityState==='visible'&&!$('editorDialog')?.open&&!$('confirmDialog')?.open){
    pullSheetSync(false);
   }
  },20000);
  document.addEventListener?.('visibilitychange',()=>{
-  if(document.visibilityState==='visible'&&sheetSyncState.configured===true){
+  if(document.visibilityState==='visible'&&cloud.connected){
    pullSheetSync(false);
   }
  });
