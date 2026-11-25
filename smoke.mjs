@@ -41,33 +41,5 @@ openTest: {
  action('editRoute');saveForm({departure:'집',destination:'도서관',routeMinutes:'23'});
  assert.equal(JSON.parse(saved.get('daymate-ai-personal-v1')).profile.routeMinutes,23);
 }
-// Student app launcher and shared-calendar UI regression.
-navigation('home');
-assert.match(dom.view.innerHTML,/student-app-grid/);
-assert.match(dom.view.innerHTML,/나의 위젯/);
-action('openStudentApp',{app:'calendar'});
-assert.match(dom.view.innerHTML,/통합 캘린더/);
-action('openStudentApp',{app:'notes'});
-assert.match(dom.view.innerHTML,/내 노트/);
-action('openStudentApp',{app:'transport'});
-assert.match(dom.view.innerHTML,/실시간 경기도 버스/);
-action('newAcademic');
-saveForm({title:'학사일정 통합 테스트',kind:'학사',date:'2026-11-30'});
-action('calendarJump',{date:'2026-11-30'});
-assert.match(dom.view.innerHTML,/학사일정 통합 테스트/);
-assert.match(dom.view.innerHTML,/학교 앱에서도 동일하게 표시/);
-action('editWidgets');
-assert.match(dom.formFields.innerHTML,/홈 위젯 선택/);
-action('toggleWidgetKey',{key:'academic'});
-assert.equal(JSON.parse(saved.get('daymate-ai-personal-v1')).settings.homeWidgets.academic,false);
-action('toggleHomeApp',{key:'notes'});
-assert.equal(JSON.parse(saved.get('daymate-ai-personal-v1')).settings.homeApps.notes,false);
-action('moveHubWidget',{key:'notes',direction:'up'});
-assert.ok(Array.isArray(JSON.parse(saved.get('daymate-ai-personal-v1')).settings.homeWidgetOrder));
-navigation('home');
-assert.match(dom.view.innerHTML,/student-app-grid/);
-assert.doesNotMatch(dom.view.innerHTML,/data-app="notes"/,'Hidden app tiles should not remain on launcher');
-assert.equal(JSON.parse(saved.get('daymate-ai-personal-v1')).academicEvents.some(x=>x.title==='학사일정 통합 테스트'),true);
-console.log('PASS: student app shortcuts, calendar school sync display, widgets customization and legacy data preservation');
 console.log('PASS: 홈, 학교, 교통, 플래너, 비서, 규칙 기반 대화, 과제·일정·노트 CRUD, 통학 경로, 로컬 저장');
 

@@ -1,4 +1,4 @@
-const CACHE='vertex-shell-v12';const ASSETS=['./','./index.html','./style.css','./app.js','./assistant-tools.js','./student-hub.js','./sync.js','./manifest.webmanifest','./icon.svg','./firebase-config.js'];
+const CACHE='vertex-shell-v10';const ASSETS=['./','./index.html','./style.css','./app.js','./sync.js','./manifest.webmanifest','./icon.svg','./firebase-config.js'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE && /^(?:daymate-shell-|vertex-shell-)/.test(k)).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',e=>{const req=e.request;if(req.method!=='GET'||new URL(req.url).origin!==location.origin)return;e.respondWith(fetch(req).then(response=>{if(response.ok&&['document','script','style'].includes(req.destination)){const copy=response.clone();caches.open(CACHE).then(c=>c.put(req,copy))}return response}).catch(()=>caches.match(req)))});

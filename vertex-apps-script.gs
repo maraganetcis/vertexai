@@ -7,7 +7,7 @@
  * 3. 기본 코드(myFunction)를 모두 지우고 이 파일(.gs) 내용을 전체 붙여넣기 한 뒤 저장(Ctrl+S)합니다.
  * 4. (권장 보안 설정) Apps Script 좌측 [프로젝트 설정(톱니바퀴)] -> [스크립트 속성]에
  *    속성 이름: VERTEX_SYNC_TOKEN / 값: 본인만의 비밀 문자열(예: my-secret-2026) 을 추가합니다.
- *    (필수: 설정하지 않으면 모든 데이터 API 요청이 차단됩니다.)
+ *    (설정하지 않으면 토큰 없이 동작하며, 설정하면 서버의 APPS_SCRIPT_TOKEN과 일치할 때만 허용됩니다.)
  * 5. 우측 상단 [배포] -> [새 배포] -> 유형: [웹 앱] 선택:
  *    - 다음 사용자 권한으로 실행: 나(본인 계정)
  *    - 액세스 권한이 있는 사용자: 모든 사용자
@@ -70,7 +70,7 @@ function getExpectedToken() {
 
 function isAuthorized(providedToken) {
   const expected = getExpectedToken();
-  if (!expected) return false;
+  if (!expected) return true;
   return String(providedToken || '').trim() === expected;
 }
 
